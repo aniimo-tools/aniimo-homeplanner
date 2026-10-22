@@ -37,7 +37,7 @@ p{margin:0}
 input.num{min-height:38px;border:1px solid var(--line2);border-radius:6px;background:var(--input);text-align:center;font:inherit;width:56px;color:var(--ink)}
 input.w{width:100px;text-align:right;padding:0 8px}
 input.ww{width:130px;text-align:right;padding:0 8px}
-select.num{min-height:38px;border:1px solid var(--line2);border-radius:6px;background:var(--input);font:inherit;color:var(--ink);text-align:center;text-align-last:center;width:62px;padding:0 2px}
+select.num{min-height:38px;border:1px solid var(--line2);border-radius:6px;background:var(--input);font:inherit;color:var(--ink);text-align:center;text-align-last:center;width:56px;padding:0 2px}
 select.num.w{width:100px}
 .big select.num{width:90px;font-size:20px;font-weight:700}
 input.num::placeholder{color:#8C8C84}
@@ -57,6 +57,11 @@ tr.sep th,tr.sep td{border-top:2px solid var(--line2)}
 .seg.sm button{min-height:36px;padding:0 12px;font-size:13px}
 .seg button:disabled{opacity:.45;cursor:not-allowed}
 .eff{white-space:nowrap}
+.mix{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px;width:250px}
+.grid td:last-child{text-align:left}
+.mix label{white-space:nowrap}
+.mix label{display:inline-flex;gap:4px;align-items:center}
+select.num.s,input.num.s{width:52px}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
 .row{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 16px}
@@ -302,6 +307,17 @@ function lvupTargets(state) {
   return { known: !!req, mats, coin, req };
 }
 
+// 電力で動かす台数（電力が使えないときは0。未設定なら全台）
+function poweredCount(state, fac) {
+  const f = state.facs[fac] || {};
+  const total = (f.lv || []).reduce((s, v) => s + (+v || 0), 0);
+  if (!POWER_FACS(fac) || !state.power.on || (+state.homeLv && +state.homeLv < POWER_LV)) return 0;
+  const pm = f.pmode || (f.mode === 'アニモ' ? 'A' : 'P');   // P＝電力、M＝複合、A＝アニモ
+  if (pm === 'P') return total;
+  if (pm === 'A') return 0;
+  return Math.min(total, +f.pw || 0);
+}
+
 function buildModel(D, state) {
   const items = {};
   for (const [code, name, sell, buy, nosale] of D.items) items[code] = { name, sell: nosale ? 0 : (sell || 0), buy: buy == null ? null : buy };
@@ -313,6 +329,13 @@ function buildModel(D, state) {
     for (let L = 1; L <= 8; L++) { sum += L * (+a[L - 1] || 0); cnt += +a[L - 1] || 0; }
     caps[code] = cap; avgLv[code] = cnt ? sum / cnt : 0;
   }
+  // 電力／アニモの台数（電力を使える施設だけ）
+  const modeCaps = {};
+  for (const [code] of D.facs) {
+    if (!POWER_FACS(code)) continue;
+    const pw = poweredCount(state, code), total = caps[code][0];
+    modeCaps[code] = { P: pw, A: total - pw };
+  }
   const recs = [];
   for (const r of D.recipes) {
     const [code, fac, lv, name, out, oq, by, bq, ins, sec0, cond, clv] = r;
@@ -320,21 +343,26 @@ function buildModel(D, state) {
     if (cond === 'ノート' || cond === 'シーズン' || cond === 'コラボ') { if (!state.notes[code]) continue; }
     else if (cond) { if ((+state.mods[cond] || 0) < clv) continue; }
     const fs = state.facs[fac] || {};
-    const sec = EFF_FACS(fac) ? sec0 / ((+fs.eff || 100) / 100) : sec0;
-    const rate = 3600 / sec;
-    const coef = {};
-    const add = (k, q) => { if (k == null) return; coef[k] = (coef[k] || 0) + q * rate; };
-    add(out, oq); if (by) add(by, bq || 0); for (const [k, q] of ins) add(k, -q);
-    let p = 0; for (const k in coef) p += (items[k] ? items[k].sell : 0) * coef[k];
-    const w = state.power.on && !(+state.homeLv && +state.homeLv < POWER_LV) && POWER_FACS(fac) && fs.mode === '電力' ? W_PER_LV * avgLv[fac] : 0;
-    recs.push({ code, fac, lv, name, coef, p, w, rate, ins, out });
+    const eff = (+fs.eff || 100) / 100;
+    // 電力を使える施設は「電力」と「アニモ」の2通りを作る（台数の上限は modeCaps）
+    const variants = POWER_FACS(fac) ? [['P', sec0, W_PER_LV * avgLv[fac]], ['A', sec0 / eff, 0]]
+      : [['', EFF_FACS(fac) ? sec0 / eff : sec0, 0]];
+    for (const [mode, sec, w] of variants) {
+      if (mode && !(modeCaps[fac] && modeCaps[fac][mode] > 0)) continue;
+      const rate = 3600 / sec;
+      const coef = {};
+      const add = (k, q) => { if (k == null) return; coef[k] = (coef[k] || 0) + q * rate; };
+      add(out, oq); if (by) add(by, bq || 0); for (const [k, q] of ins) add(k, -q);
+      let p = 0; for (const k in coef) p += (items[k] ? items[k].sell : 0) * coef[k];
+      recs.push({ code, fac, lv, name, coef, p, w, rate, ins, out, mode });
+    }
   }
   const t = lvupTargets(state), tgt = {};
   for (const c in t.mats) { const d = t.mats[c] - (+state.lvup.stock[c] || 0); if (d > 0) tgt[c] = d; }
-  return { items, recs, caps, powCap: maxPowerW(state), tgt, targets: t };
+  return { items, recs, caps, modeCaps, powCap: maxPowerW(state), tgt, targets: t };
 }
 
-if (typeof module !== 'undefined') module.exports = { applyHomeLv, maxFacLv, defaultState, buildModel, lvupTargets, LVUP_ITEMS, LVUP_REQ, POWER_FACS, EFF_FACS };
+if (typeof module !== 'undefined') module.exports = { poweredCount, applyHomeLv, maxFacLv, defaultState, buildModel, lvupTargets, LVUP_ITEMS, LVUP_REQ, POWER_FACS, EFF_FACS };
 
 </script>
 <script>
@@ -396,7 +424,7 @@ function simplexMax(c, A, b) {
 // model: { items:{code:{sell,buy}}, recs:[{fac,lv,coef:{code:v},w,p,name,...}], caps:{fac:[cap L1..L8]}, powCap, tgt:{code:deficit} }
 function makeSolver(model) {
   const R = model.recs, nR = R.length;
-  const caps = model.caps;
+  const caps = model.caps, modeCaps = model.modeCaps || {};
   let prio = false, chain = new Array(nR).fill(false);
 
   function solveLP(y) {           // y=null: 小数（容量で縛る）
@@ -427,6 +455,13 @@ function makeSolver(model) {
         if (any) { A.push(r); b.push(caps[f][L - 1]); }
       }
     }
+    for (const f in modeCaps) {          // 電力の台数・アニモの台数
+      for (const md of ['P', 'A']) {
+        let any = false; const r = new Array(nv).fill(0);
+        xs.forEach((j, t) => { if (!bnd[t] && String(R[j].fac) === f && R[j].mode === md) { r[t] = 1; any = true; } });
+        if (any) { A.push(r); b.push(modeCaps[f][md]); }
+      }
+    }
     for (const k of used) {
       const r = new Array(nv).fill(0);
       xs.forEach((j, t) => { const v = R[j].coef[k]; if (v) r[t] = -v; });
@@ -454,6 +489,12 @@ function makeSolver(model) {
       let s = 0;
       for (let t = 0; t < nR; t++) if (R[t].fac === R[j].fac && R[t].lv >= L) s += y[t];
       if (s + 1 > cap[L - 1] + 1e-9) return false;
+    }
+    const mc = modeCaps[R[j].fac];
+    if (mc && R[j].mode) {
+      let s = 0;
+      for (let t = 0; t < nR; t++) if (R[t].fac === R[j].fac && R[t].mode === R[j].mode) s += y[t];
+      if (s + 1 > mc[R[j].mode] + 1e-9) return false;
     }
     return true;
   }
@@ -661,7 +702,9 @@ function runCalc() {
   R.forEach((r, j) => {
     const n = chain[j] ? x[j] : out.y[j];
     if (n <= 1e-3) return;
-    const lab = chain[j] ? r.name + ' ' + fmt(n, 2) + '台分' : r.name + (MULTI.has(r.fac) || n > 1 ? ' ' + n : '');
+    const mix = model.modeCaps[r.fac] && model.modeCaps[r.fac].P > 0 && model.modeCaps[r.fac].A > 0;
+    const tag = mix && r.mode ? (r.mode === 'P' ? '（電力）' : '（アニモ）') : '';
+    const lab = chain[j] ? r.name + tag + ' ' + fmt(n, 2) + '台分' : r.name + tag + (MULTI.has(r.fac) || n > 1 ? ' ' + n : '');
     (byFac[r.fac] = byFac[r.fac] || []).push({ lab, t: chain[j], code: r.out });
   });
   // 1日に使う種
@@ -716,12 +759,17 @@ function viewHome() {
       : `<td class="na" aria-label="未解放">—</td>`).join('');
     let extra = '';
     if (POWER_FACS(c)) {
-      const on = state.power.on;
-      extra = `<span class="seg sm" role="group" aria-label="${esc(n)}の動かし方">
-        <button data-mode="${c}" data-v="電力" aria-pressed="${f.mode === '電力'}" ${on ? '' : 'disabled'}>電力</button>
-        <button data-mode="${c}" data-v="アニモ" aria-pressed="${f.mode !== '電力'}" ${on ? '' : 'disabled'}>アニモ</button></span>`;
+      const total = f.lv.reduce((s, x) => s + (+x || 0), 0);
+      const canP = state.power.on && !(hl && hl < POWER_LV);
+      const pw = poweredCount(state, c);
+      const pm = canP ? (f.pmode || (f.mode === 'アニモ' ? 'A' : 'P')) : 'A';
+      const btn = (v, lab) => `<button data-pmode="${c}" data-v="${v}" aria-pressed="${pm === v}" ${canP ? '' : 'disabled'}>${lab}</button>`;
+      const effIn = `<label>効率<input class="num s" inputmode="numeric" aria-label="${esc(n)}のアニモ効率" data-eff="${c}" value="${f.eff ?? 100}">%</label>`;
+      extra = `<span class="mix"><span class="seg sm" role="group" aria-label="${esc(n)}の動かし方">${btn('P', '電力')}${btn('M', '複合')}${btn('A', 'アニモ')}</span>
+        ${pm === 'M' ? `<label>電力${sel(`aria-label="${esc(n)}の電力の台数" data-pwn="${c}"`, pw, total, 0, 'num s')}台／アニモ ${total - pw}台</label>` : ''}
+        ${pm !== 'P' ? effIn : ''}</span>`;
     } else if (EFF_FACS(c)) {
-      extra = `<label class="eff"><input class="num" inputmode="numeric" aria-label="${esc(n)}のアニモ効率" data-eff="${c}" value="${f.eff ?? 100}"> %</label>`;
+      extra = `<span class="mix"><label>効率<input class="num s" inputmode="numeric" aria-label="${esc(n)}のアニモ効率" data-eff="${c}" value="${f.eff ?? 100}">%</label></span>`;
     }
     const mc = maxCount(c, hl);
     return `<tr><th scope="row"><span class="nm">${fic(c)}${esc(n)}</span></th>${cells}<td class="r">${f.lv.reduce((a, b) => a + (+b || 0), 0)}${mc != null ? `<span class="muted small">/${mc}</span>` : ''}</td><td>${extra}</td></tr>`;
@@ -863,6 +911,7 @@ function onInput(e) {
     f.lv[i] = n;
   }
   else if (d.eff) state.facs[d.eff].eff = num === '' ? null : num;
+  else if (d.pwn) state.facs[d.pwn].pw = num === '' ? 0 : Math.round(num);
   else if (d.mod) state.mods[d.mod] = num === '' ? 0 : num;
   else if (d.pw) state.power[d.pw] = num === '' ? 0 : num;
   else if (d.home !== undefined) { state.homeLv = num === '' ? '' : Math.round(num); applyHomeLv(state); }
@@ -883,7 +932,11 @@ async function onClick(e) {
   const b = e.target.closest('button,[data-tab]'); if (!b) return;
   const d = b.dataset;
   if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); return; }
-  if (d.mode) { state.facs[d.mode].mode = d.v; result = null; }
+  if (d.pmode) {
+    const f = state.facs[d.pmode]; f.pmode = d.v;
+    if (d.v === 'M' && (f.pw == null || f.pw === '')) f.pw = Math.ceil(f.lv.reduce((s, x) => s + (+x || 0), 0) / 2);
+    result = null;
+  }
   else if (d.power) { const H = +state.homeLv; state.power.on = d.power === '1' && !(H && H < POWER_LV); result = null; }
   else if (d.maxall !== undefined) {
     const H = +state.homeLv;
