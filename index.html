@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>アニモ ホーム生産プランナー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F5F5F0;--card:#FFFFFF;--line:#E2E2DC;--line2:#C9C9C1;--ink:#1C1C1A;--muted:#5F5F58;--accent:#0E6E62;--accent2:#0A5249;--soft:#E3F1EE;--input:#FFFDF2;--warn:#8A3F06;--warnbg:#FDF1E3;--head:#F0F0EA}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Noto Sans JP',Meiryo,sans-serif;font-size:15px;line-height:1.6}
+header{background:var(--card);border-bottom:1px solid var(--line)}
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-top:14px}
+.title{font-size:20px;font-weight:700}
+.tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button{font:inherit;cursor:pointer}
+.btn{min-height:44px;padding:0 16px;border:1px solid var(--accent);background:var(--card);border-radius:8px;color:var(--accent);font-weight:700}
+.link{min-height:44px;padding:0 8px;border:none;background:none;color:var(--muted);font-size:13px;text-decoration:underline}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+nav.tabs button{padding:12px 16px;border:none;background:none;color:var(--muted);font-size:15px;border-bottom:3px solid transparent}
+nav.tabs button[aria-current=page]{color:var(--accent);font-weight:700;border-bottom-color:var(--accent)}
+main{max-width:1200px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px}
+h2{margin:0;font-size:18px}
+.h{margin:0 0 12px}
+p{margin:0}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.note{margin-top:-12px;font-size:13px}
+.warn{background:var(--warnbg);color:var(--warn);padding:10px 14px;border-radius:8px}
+.hl,.bar{flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px}
+.big{display:flex;align-items:center;gap:8px;font-size:18px}
+.big input{width:80px;font-size:20px;font-weight:700}
+input.num{min-height:38px;border:1px solid var(--line2);border-radius:6px;background:var(--input);text-align:center;font:inherit;width:56px;color:var(--ink)}
+input.w{width:100px;text-align:right;padding:0 8px}
+input.ww{width:130px;text-align:right;padding:0 8px}
+input.num::placeholder{color:#8C8C84}
+.scroll{overflow-x:auto}
+table.grid{border-collapse:collapse;width:100%;min-width:900px;font-size:14px}
+table.grid.lv{min-width:480px;font-size:15px}
+.grid th,.grid td{padding:6px 8px;border-top:1px solid var(--line);text-align:center;white-space:nowrap}
+.grid thead th{background:var(--head);border-top:none;font-weight:700;font-size:13px}
+.grid tbody th{text-align:left;font-weight:500}
+.r{text-align:right!important}
+.b{font-weight:700}
+tr.sep th,tr.sep td{border-top:2px solid var(--line2)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;background:var(--card)}
+.seg button{min-height:44px;padding:0 18px;border:none;background:var(--card);color:var(--ink);font-size:15px}
+.seg button[aria-pressed=true]{background:var(--accent);color:#fff;font-weight:700}
+.seg.sm button{min-height:36px;padding:0 12px;font-size:13px}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.eff{white-space:nowrap}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 16px}
+.chk{display:flex;align-items:center;gap:8px;min-height:40px}
+.chk input{width:20px;height:20px}
+.tag{font-size:12px;color:var(--muted)}
+.primary{min-height:52px;padding:0 32px;border:none;background:var(--accent);color:#fff;border-radius:10px;font-size:17px;font-weight:700}
+.primary:disabled{opacity:.6}
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;font-size:13px}
+.stat .v{font-size:24px;font-weight:700;margin:2px 0}
+.facs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.fac{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.fh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:5px 12px;border-radius:999px;background:var(--soft);color:var(--accent2);font-size:14px}
+.chip.t{background:var(--warnbg);color:var(--warn)}
+.chip.o{background:var(--head);color:var(--muted)}
+#banner{background:var(--warnbg);border-bottom:1px solid #F0D9BC}
+#banner .wrap{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding-top:10px;padding-bottom:10px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:10px;font-size:14px;z-index:10;max-width:90vw}
+@media (max-width:760px){
+  .wrap{padding:0 16px} main{padding:16px 16px 96px}
+  .title{font-size:17px}
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;margin:0;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;z-index:5}
+  nav.tabs button{min-height:58px;padding:4px 2px;font-size:11px;border-bottom:none;border-top:3px solid transparent}
+  nav.tabs button[aria-current=page]{border-top-color:var(--accent)}
+  .two,.facs{grid-template-columns:minmax(0,1fr)}
+  .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .notes{grid-template-columns:minmax(0,1fr)}
+  .stat .v{font-size:20px}
+  .primary{width:100%}
+  #toast{bottom:80px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div class="title">アニモ ホーム生産プランナー</div>
+      <div class="tools">
+        <button class="btn" data-share>共有用URLをコピー</button>
+        <button class="link" data-backup>ファイルでバックアップ</button>
+        <button class="link" data-restore>ファイルから読み込み</button>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="画面の切り替え">
+      <button data-tab="home">ホーム設定</button>
+      <button data-tab="lvup">LvUP素材</button>
+      <button data-tab="main">最適配置</button>
+      <button data-tab="levelup">レベルアップ推奨</button>
+      <button data-tab="book">図鑑</button>
+    </nav>
+  </div>
+</header>
+<div id="banner" hidden>
+  <div class="wrap"><span>共有されたデータがあります。読み込むと、今の入力内容は置き換わります。</span>
+    <span class="tools"><button class="btn" data-accept>読み込む</button><button class="link" data-reject>読み込まない</button></span></div>
+</div>
+<main id="view"></main>
+<div id="toast" role="status" hidden></div>
+<input type="file" id="file" accept="application/json,.json" hidden>
+<script>window.GAME_DATA = {"items":[[1,"小麦の種",0,0,0],[2,"ジャガイモの種",1,1,0],[3,"イネの種",12,12,0],[4,"大豆のタネ",12,12,0],[5,"バラの種",21,21,0],[6,"ワタの種",21,21,0],[7,"イチゴの種",32,32,0],[8,"ラベンダーの種",32,32,0],[9,"サトウキビの種",32,32,0],[10,"高麗人参の種",56,56,0],[11,"ブドウの種",56,56,0],[12,"クランベリーの種",97,97,0],[13,"リュウゼツランの種",97,97,0],[14,"ポテトリーダーの種",null,null,0],[15,"月露大根の種",null,null,0],[16,"満月椒の種",null,null,0],[17,"柳の種",1,1,0],[18,"翠竹の種",8,8,0],[19,"レモンの種",8,8,0],[20,"桜の種",21,21,0],[21,"リンゴの種",21,21,0],[22,"楓の種",21,21,0],[23,"シュロの種",47,47,0],[24,"クリの木の種",47,47,0],[25,"クルミの木の種",47,47,0],[26,"ゴムの木の種",75,75,0],[27,"ヤシの木の種",75,75,0],[28,"カカオの種",122,122,0],[29,"ビターオレンジの種",122,122,0],[1001,"小麦",1,null,0],[1002,"ジャガイモ",8,null,0],[1004,"イネ",10,null,0],[1005,"大豆",11,null,0],[1006,"バラ",39,null,0],[1007,"綿花",44,null,0],[1009,"イチゴ",61,null,0],[1010,"ラベンダー",69,null,0],[1011,"サトウキビ",81,null,0],[1012,"高麗人参",280,null,0],[1013,"ブドウ",93,null,0],[1014,"上級小麦",52,null,0],[1016,"クランベリー",210,null,0],[1017,"リュウゼツラン",240,null,0],[1071,"ポテトリーダー",3,null,0],[1081,"月露大根",74,null,0],[1082,"満月椒",74,null,0],[1101,"ヤナギ",3,null,0],[1102,"竹",13,null,0],[1103,"レモン",16,null,0],[1104,"桜",44,null,0],[1105,"リンゴ",39,null,0],[1106,"カエデシロップ",35,null,0],[1108,"シュロの皮",120,null,0],[1109,"クリ",100,null,0],[1110,"クルミ",120,null,0],[1112,"天然ゴム",370,null,0],[1113,"ココナッツ",220,null,0],[1115,"カカオ",310,null,0],[1116,"オレンジの花",230,null,0],[1190,"木材",null,null,1],[1201,"岩石",7,null,0],[1202,"粘土",22,null,0],[1203,"貝殻",76,null,0],[1204,"銅鉱石",160,null,0],[1205,"石英鉱石",300,null,0],[1206,"宝石",850,null,0],[1290,"鉱砂",null,null,1],[1301,"井戸水",12,null,0],[1303,"清水",46,null,0],[1305,"深層湧水",150,null,0],[1307,"天然鉱泉",250,null,0],[1401,"香晶",56,null,0],[1501,"星",390,null,0],[1601,"海塩",16,null,0],[1603,"真珠",450,null,0],[1701,"羊毛",140,null,0],[1703,"花びら",230,null,0],[2101,"荒材",null,null,1],[2102,"規格木材",null,null,1],[2103,"集成材の梁",null,null,1],[2104,"高密度木製部材",null,null,1],[2201,"粗粒骨材",null,null,1],[2202,"焼結鉱石レンガ",null,null,1],[2203,"精錬鉱材",null,null,1],[2204,"微結晶鉱物板",null,null,1],[2301,"綿糸",410,null,0],[2302,"毛糸",760,null,0],[2303,"綿布",610,null,0],[2304,"ウール生地",1190,null,0],[2305,"シュロ縄",1150,null,0],[2306,"染色された綿布",6920,null,0],[2401,"小麦粉",70,null,0],[2402,"豆腐",230,null,0],[2403,"米",240,null,0],[2404,"ラベンダーパウダー",650,null,0],[2405,"ライスミルク",1860,null,0],[2406,"高麗人参パウダー",1160,null,0],[2407,"精製小麦粉",1260,null,0],[2408,"ココナッツオイル",1580,null,0],[2409,"ココアパウダー",2470,null,0],[2410,"ココナッツミルク",3820,null,0],[3101,"ポテトチップス",110,null,0],[3102,"ドライレモン",190,null,0],[3103,"乾燥桜花",410,null,0],[3104,"干し豆腐",330,null,0],[3105,"ドライアップル",510,null,0],[3106,"ドライストロベリー",690,null,0],[3107,"ナッツ",1980,null,0],[3108,"乾燥高麗人参",1120,null,0],[3109,"ドライグレープ",1210,null,0],[3110,"ココナッツファイン",1470,null,0],[3111,"ドライクランベリー",2080,null,0],[3112,"ドライフラワー",1990,null,0],[3201,"白がゆ",660,null,0],[3202,"ローズシロップ",770,null,0],[3203,"氷砂糖",1180,null,0],[3204,"ストロベリージャム",650,null,0],[3205,"メープルりんごジャム",950,null,0],[3206,"栗餡",980,null,0],[3207,"ブドウジャム",1120,null,0],[3208,"高麗人参の滋養がゆ",2440,null,0],[3209,"メープルシュガー",1060,null,0],[3210,"麦芽糖",3440,null,0],[3211,"カカオソース",8350,null,0],[3212,"クランベリージャム",7350,null,0],[3213,"リュウゼツランのシロップ",3080,null,0],[3281,"双月甘辛ソース",2390,null,0],[3301,"パン",280,null,0],[3302,"上級パン",330,null,0],[3303,"焼き大豆",450,null,0],[3304,"こんがりメープルポテト",850,null,0],[3305,"アップルタルト",590,null,0],[3306,"ローズスコーン",1310,null,0],[3307,"ラベンダークッキー",1040,null,0],[3308,"アップルキャンディー",1980,null,0],[3309,"グレープキャンディー",2850,null,0],[3310,"キャラメルナッツスライス",3130,null,0],[3311,"メープルスター",2810,null,0],[3312,"ココナッツクッキー",3700,null,0],[3313,"お花パン",4610,null,0],[3314,"イチゴとチョコのココナッツプリン",17890,null,0],[3315,"上級イチゴチョコのココナッツプリン",20270,null,0],[3381,"焼き満月椒",1520,null,0],[3401,"桜のおにぎり",1410,null,0],[3402,"ジャガイモのポタージュ",750,null,0],[3403,"醤油チャーハン",1280,null,0],[3404,"上級ジャガイモのポタージュ",880,null,0],[3405,"豆腐の醤油焼き",1470,null,0],[3406,"焼き甘栗",2470,null,0],[3407,"フルーツ飴",2260,null,0],[3408,"くるみケーキ",3550,null,0],[3409,"高麗人参と栗のケーキ",2510,null,0],[3410,"米粉クレープ",2510,null,0],[3411,"ゼリー",4790,null,0],[3412,"葡萄香るジュレ",5050,null,0],[3413,"イチゴキャンディー",6840,null,0],[3414,"上級ゼリー",5520,null,0],[3415,"イチゴグランプルケーキ",5650,null,0],[3416,"クランベリーチョコ",13480,null,0],[3481,"双月あったかシチュー",2150,null,0],[3482,"月露大根の飾り切り",2370,null,0],[3501,"玄米茶",740,null,0],[3502,"小麦茶",330,null,0],[3503,"イチゴジュース",1180,null,0],[3504,"サトウキビジュース",650,null,0],[3505,"リンゴジュース",1000,null,0],[3506,"ポテト入りクワス",2640,null,0],[3507,"ブドウジュース",2390,null,0],[3508,"高麗人参ジュース",2670,null,0],[3509,"葡萄レモンジュース",2970,null,0],[3510,"ウォルナットミルク",2270,null,0],[3511,"クランベリージュース",4060,null,0],[3512,"ココナッツドリンク",1650,null,0],[3513,"ココナッツココア",4930,null,0],[3514,"ホットココア",5330,null,0],[3515,"オレンジのフラワーウォーター",4700,null,0],[3516,"アガベドリンク",6610,null,0],[3601,"桜の塩漬け",780,null,0],[3602,"醤油",650,null,0],[3603,"ライスミルク",2580,null,0],[3604,"リンゴ酢",510,null,0],[3605,"上級ライスミルク",2980,null,0],[3606,"米酢",2510,null,0],[3607,"塩レモン",1110,null,0],[3608,"上級塩レモン",1440,null,0],[3609,"イチゴのシロップ漬け",2090,null,0],[3610,"オレンジの花のシロップ漬け",6950,null,0],[3681,"双月の漬物",2290,null,0],[4101,"竹線香",470,null,0],[4102,"バラの香り",790,null,0],[4103,"桜の香り",840,null,0],[4104,"ラベンダーの香り",1270,null,0],[4105,"レモンの香り",700,null,0],[4106,"上級レモンアロマ",900,null,0],[4107,"高麗人参入りハーブティー",2360,null,0],[4108,"石けん",5500,null,0],[4109,"上級石けん",6320,null,0],[4110,"調合香水",4850,null,0],[4111,"オレンジの香り",3640,null,0],[4112,"ボディローション",7030,null,0],[4113,"上級調合香水",5520,null,0],[4201,"木彫り",90,null,0],[4202,"竹かご",190,null,0],[4203,"水磨き石",300,null,0],[4204,"上級水磨き石",360,null,0],[4205,"ローズアロマチップ",1270,null,0],[4206,"陶器",630,null,0],[4207,"上級ローズアロマチップ",1420,null,0],[4208,"花束",1120,null,0],[4209,"貝殻の工芸品",1190,null,0],[4210,"ラベンダーのサシェ",1580,null,0],[4211,"風鈴",3180,null,0],[4212,"スターライト",2140,null,0],[4213,"ドリームキャッチャー",1730,null,0],[4214,"上級風鈴",3600,null,0],[4215,"ラバーダック",1540,null,0],[4216,"真珠のネックレス",3210,null,0],[4217,"草編みの玩具",1580,null,0],[4218,"磁器",2960,null,0],[4219,"染料",4280,null,0],[4220,"宝石の結晶塵",4600,null,0],[4221,"生け花",7700,null,0],[4222,"高級宝石の結晶塵",5210,null,0],[4223,"ぬいぐるみ",11110,null,0],[4281,"豊穣の盛り合わせ",5290,null,0],[9001,"うろこ",null,null,0]],"recipes":[[1001,10,1,"小麦",1001,5,null,null,[[1,1]],240,"",0],[1081,10,1,"月露大根",1081,8,null,null,[[15,1]],2400,"シーズン",0],[1082,10,1,"満月椒",1082,8,null,null,[[16,1]],2400,"シーズン",0],[1071,10,1,"ポテトリーダー",1071,5,null,null,[[14,1]],800,"コラボ",0],[1002,10,2,"ジャガイモ",1002,2,null,null,[[2,1]],640,"",0],[1003,10,2,"高速レシピ・小麦",1001,42,null,null,[[1,1]],1200,"生態",1],[1004,10,3,"イネ",1004,18,null,null,[[3,1]],2400,"",0],[1005,10,3,"大豆",1005,16,null,null,[[4,1]],2400,"",0],[1006,10,4,"バラ",1006,8,null,null,[[5,1]],2400,"",0],[1007,10,4,"綿花",1007,7,null,null,[[6,1]],2400,"",0],[1008,10,4,"高速レシピ・ジャガイモ",1002,46,null,null,[[2,1]],2400,"生態",3],[1009,10,5,"イチゴ",1009,8,null,null,[[7,1]],2400,"",0],[1010,10,5,"ラベンダー",1010,7,null,null,[[8,1]],2400,"",0],[1011,10,5,"サトウキビ",1011,6,null,null,[[9,1]],2400,"",0],[1012,10,6,"高麗人参",1012,3,null,null,[[10,1]],2400,"",0],[1013,10,6,"ブドウ",1013,9,null,null,[[11,1]],2400,"",0],[1014,10,6,"上級小麦",1014,15,null,null,[[1,1]],2400,"",0],[1015,10,6,"高速レシピ・イネ",1004,79,null,null,[[3,1]],2400,"生態",5],[1016,10,7,"クランベリー",1016,7,null,null,[[12,1]],2400,"",0],[1017,10,7,"リュウゼツラン",1017,6,null,null,[[13,1]],2400,"",0],[1018,10,7,"高速レシピ・イチゴ",1009,26,null,null,[[7,1]],2400,"生態",7],[1101,11,1,"ヤナギ",1101,5,1190,1,[[17,1]],640,"",0],[1102,11,2,"竹",1102,10,1190,8,[[18,1]],2400,"",0],[1103,11,2,"レモン",1103,8,1190,8,[[19,1]],2400,"",0],[1104,11,3,"桜",1104,7,1190,21,[[20,1]],2400,"",0],[1105,11,3,"リンゴ",1105,8,1190,21,[[21,1]],2400,"",0],[1106,11,3,"カエデシロップ",1106,9,1190,21,[[22,1]],2400,"",0],[1107,11,3,"高速レシピ・竹",1102,23,1190,21,[[18,1]],2400,"生態",2],[1108,11,4,"シュロの皮",1108,6,1190,47,[[23,1]],2400,"",0],[1109,11,4,"クリ",1109,7,1190,47,[[24,1]],2400,"",0],[1110,11,4,"クルミ",1110,6,1190,47,[[25,1]],2400,"",0],[1111,11,4,"高速レシピ・レモン",1103,42,1190,47,[[19,1]],2400,"生態",4],[1112,11,5,"天然ゴム",1112,3,1190,75,[[26,1]],2400,"",0],[1113,11,5,"ココナッツ",1113,5,1190,75,[[27,1]],2400,"",0],[1114,11,5,"高速レシピ・カエデシロップ",1106,30,1190,75,[[22,1]],2400,"生態",6],[1115,11,6,"カカオ",1115,6,1190,122,[[28,1]],2400,"",0],[1116,11,6,"オレンジの花",1116,8,1190,122,[[29,1]],2400,"",0],[1117,11,6,"高速レシピ・ココナッツ",1113,8,1190,122,[[27,1]],2400,"生態",8],[1201,12,1,"岩石",1201,6,1290,3,[],900,"",0],[1202,12,2,"粘土",1202,10,1290,16,[],1800,"",0],[1203,12,3,"貝殻",1203,6,1290,32,[],1800,"",0],[1204,12,4,"銅鉱石",1204,5,1290,56,[],1800,"",0],[1205,12,5,"石英鉱石",1205,4,1290,86,[],1800,"",0],[1206,12,6,"宝石",1206,2,1290,122,[],1800,"",0],[1301,13,1,"井戸水",1301,10,null,null,[],1800,"",0],[1302,13,1,"高速レシピ・井戸水",1301,15,null,null,[],1800,"資源探知機",1],[1303,13,2,"清水",1303,8,null,null,[],1800,"",0],[1304,13,3,"高速レシピ・清水",1303,17,null,null,[],1800,"資源探知機",4],[1305,13,4,"深層湧水",1305,6,null,null,[],1800,"",0],[1306,13,4,"高速レシピ・深層湧水",1305,9,null,null,[],1800,"資源探知機",6],[1307,13,5,"天然鉱泉",1307,6,null,null,[],1800,"",0],[1308,13,5,"高速レシピ・天然鉱泉",1307,9,null,null,[],1800,"資源探知機",7],[1401,14,1,"香晶",1401,4,null,null,[],1800,"",0],[1402,14,2,"高速レシピ・香晶",1401,12,null,null,[],1800,"資源探知機",3],[1501,15,1,"星",1501,2,null,null,[],1800,"",0],[1601,16,1,"海塩",1601,10,null,null,[],1800,"",0],[1602,16,2,"高速レシピ・海塩",1601,23,null,null,[],1800,"資源探知機",2],[1603,16,3,"真珠",1603,2,null,null,[],1800,"",0],[1701,17,1,"羊毛",1701,4,null,null,[],1800,"",0],[1702,17,2,"高速レシピ・羊毛",1701,6,null,null,[],1800,"資源探知機",5],[1703,17,3,"花びら",1703,6,null,null,[],1800,"",0],[2101,21,1,"荒材",2101,1,null,null,[[1190,8]],54,"",0],[2102,21,2,"規格木材",2102,1,null,null,[[2101,8]],54,"",0],[2103,21,3,"集成材の梁",2103,1,null,null,[[2102,8]],54,"",0],[2104,21,4,"高密度木製部材",2104,1,null,null,[[2103,4]],54,"",0],[2201,22,1,"粗粒骨材",2201,1,null,null,[[1290,8]],54,"",0],[2202,22,2,"焼結鉱石レンガ",2202,1,null,null,[[2201,8]],54,"",0],[2203,22,3,"精錬鉱材",2203,1,null,null,[[2202,8]],54,"",0],[2204,22,4,"微結晶鉱物板",2204,1,null,null,[[2203,4]],54,"",0],[2301,23,1,"綿糸",2301,1,null,null,[[1007,7]],54,"",0],[2302,23,2,"毛糸",2302,1,null,null,[[1701,4]],54,"",0],[2303,23,2,"綿布",2303,1,null,null,[[2301,1]],54,"",0],[2304,23,3,"ウール生地",2304,1,null,null,[[2302,1]],54,"",0],[2305,23,3,"シュロ縄",2305,1,null,null,[[1108,6]],54,"",0],[2306,23,4,"染色された綿布",2306,1,null,null,[[2303,1],[4219,1]],162,"",0],[2401,24,1,"小麦粉",2401,1,null,null,[[1001,50]],54,"",0],[2402,24,2,"豆腐",2402,1,null,null,[[1005,16]],54,"",0],[2403,24,2,"米",2403,1,null,null,[[1004,18]],54,"",0],[2404,24,3,"ラベンダーパウダー",2404,1,null,null,[[1010,7]],54,"",0],[2405,24,4,"ライスミルク",2405,1,null,null,[[2403,2],[1303,16]],108,"",0],[2406,24,4,"高麗人参パウダー",2406,1,null,null,[[1012,3]],54,"",0],[2407,24,5,"精製小麦粉",2407,1,null,null,[[1014,15]],54,"",0],[2408,24,5,"ココナッツオイル",2408,1,null,null,[[1113,5]],54,"",0],[2409,24,6,"ココアパウダー",2409,1,null,null,[[1115,6]],54,"",0],[2410,24,6,"ココナッツミルク",2410,1,null,null,[[1113,5],[1307,6]],108,"",0],[3101,31,1,"ポテトチップス",3101,1,null,null,[[1002,8]],54,"",0],[3102,31,2,"ドライレモン",3102,1,null,null,[[1103,8]],54,"",0],[3103,31,3,"乾燥桜花",3103,1,null,null,[[1104,7]],54,"",0],[3104,31,3,"干し豆腐",3104,1,null,null,[[2402,1]],54,"",0],[3105,31,4,"ドライアップル",3105,1,null,null,[[1105,8]],54,"",0],[3106,31,4,"ドライストロベリー",3106,1,null,null,[[1009,8]],54,"",0],[3107,31,5,"ナッツ",3107,1,null,null,[[1109,7],[1110,6]],108,"",0],[3108,31,5,"乾燥高麗人参",3108,1,null,null,[[1012,3]],54,"",0],[3109,31,6,"ドライグレープ",3109,1,null,null,[[1013,9]],54,"",0],[3110,31,6,"ココナッツファイン",3110,1,null,null,[[1113,5]],54,"",0],[3111,31,7,"ドライクランベリー",3111,1,null,null,[[1016,7]],54,"",0],[3112,31,7,"ドライフラワー",3112,1,null,null,[[1703,6]],54,"",0],[3201,32,1,"白がゆ",3201,1,null,null,[[2403,2],[1301,5]],108,"",0],[3281,32,1,"双月甘辛ソース",3281,1,null,null,[[1081,8],[1082,8],[1601,23]],162,"シーズン",0],[3202,32,2,"ローズシロップ",3202,1,null,null,[[1006,12],[1303,8]],108,"",0],[3203,32,3,"氷砂糖",3203,1,null,null,[[1011,6],[1303,8]],108,"",0],[3204,32,3,"ストロベリージャム",3204,1,null,null,[[1009,8]],54,"",0],[3205,32,3,"メープルりんごジャム",3205,1,null,null,[[1106,9],[1105,8]],108,"",0],[3206,32,4,"栗餡",3206,1,null,null,[[1109,7]],54,"",0],[3207,32,4,"ブドウジャム",3207,1,null,null,[[1013,9]],54,"",0],[3208,32,4,"高麗人参の滋養がゆ",3208,1,null,null,[[3108,1],[2403,2]],108,"ノート",0],[3209,32,5,"メープルシュガー",3209,1,null,null,[[1106,18]],54,"",0],[3210,32,5,"麦芽糖",3210,1,null,null,[[1014,15],[2403,2],[1305,6]],162,"",0],[3211,32,6,"カカオソース",3211,1,null,null,[[2409,1],[3210,1]],216,"",0],[3212,32,6,"クランベリージャム",3212,1,null,null,[[1016,7],[3210,1]],216,"",0],[3213,32,6,"リュウゼツランのシロップ",3213,1,null,null,[[1017,6],[1303,9]],108,"",0],[3301,33,1,"パン",3301,1,null,null,[[2401,2],[1301,5]],108,"",0],[3302,33,1,"上級パン",3302,1,null,null,[[2401,2],[1301,5]],108,"キッチン",2],[3381,33,1,"焼き満月椒",3381,1,null,null,[[1082,8],[1601,23]],108,"シーズン",0],[3303,33,2,"焼き大豆",3303,1,null,null,[[1005,16],[1601,10]],108,"",0],[3304,33,3,"こんがりメープルポテト",3304,1,null,null,[[1002,8],[1106,9],[1601,10]],162,"",0],[3305,33,3,"アップルタルト",3305,1,null,null,[[2401,1],[1105,8]],108,"",0],[3306,33,3,"ローズスコーン",3306,1,null,null,[[3202,1],[2401,1]],162,"ノート",0],[3307,33,4,"ラベンダークッキー",3307,1,null,null,[[2404,1],[2401,1]],108,"",0],[3308,33,4,"アップルキャンディー",3308,1,null,null,[[1105,8],[3203,1]],162,"",0],[3309,33,5,"グレープキャンディー",3309,1,null,null,[[1013,9],[3203,1]],162,"",0],[3310,33,5,"キャラメルナッツスライス",3310,1,null,null,[[3107,1],[1106,9]],162,"",0],[3311,33,6,"メープルスター",3311,1,null,null,[[3209,1],[1501,2]],108,"",0],[3312,33,6,"ココナッツクッキー",3312,1,null,null,[[3110,1],[2407,1]],108,"",0],[3313,33,7,"お花パン",3313,1,null,null,[[2407,1],[3112,1]],108,"",0],[3314,33,7,"イチゴとチョコのココナッツプリン",3314,1,null,null,[[3211,1],[1009,16],[2410,1]],378,"",0],[3315,33,7,"上級イチゴチョコのココナッツプリン",3315,1,null,null,[[3211,1],[1009,16],[2410,1]],378,"キッチン",7],[3401,34,1,"桜のおにぎり",3401,1,null,null,[[3601,1],[2403,1]],162,"",0],[3402,34,1,"ジャガイモのポタージュ",3402,1,null,null,[[1002,15],[1303,8]],108,"",0],[3403,34,1,"醤油チャーハン",3403,1,null,null,[[2403,1],[3602,1]],162,"",0],[3404,34,1,"上級ジャガイモのポタージュ",3404,1,null,null,[[1002,15],[1303,8]],108,"キッチン",3],[3481,34,1,"双月あったかシチュー",3481,1,null,null,[[1081,8],[1082,8],[1303,8]],162,"シーズン",0],[3482,34,1,"月露大根の飾り切り",3482,1,null,null,[[1081,8],[3203,1]],162,"シーズン",0],[3405,34,2,"豆腐の醤油焼き",3405,1,null,null,[[2402,1],[3602,1]],162,"",0],[3406,34,2,"焼き甘栗",3406,1,null,null,[[1109,7],[3203,1]],162,"",0],[3407,34,2,"フルーツ飴",3407,1,null,null,[[1009,8],[3203,1]],162,"",0],[3408,34,3,"くるみケーキ",3408,1,null,null,[[1110,6],[2405,1]],162,"",0],[3409,34,3,"高麗人参と栗のケーキ",3409,1,null,null,[[2406,1],[1109,7]],108,"",0],[3410,34,3,"米粉クレープ",3410,1,null,null,[[2405,1]],108,"",0],[3411,34,4,"ゼリー",3411,1,null,null,[[1703,6],[3209,1],[1305,6]],162,"",0],[3412,34,4,"葡萄香るジュレ",3412,1,null,null,[[3507,1],[3109,1]],162,"",0],[3413,34,4,"イチゴキャンディー",3413,1,null,null,[[1009,8],[3210,1]],216,"ノート",0],[3414,34,4,"上級ゼリー",3414,1,null,null,[[1703,6],[3209,1],[1305,6]],162,"キッチン",6],[3415,34,5,"イチゴグランプルケーキ",3415,1,null,null,[[2407,1],[1009,16],[2408,1]],162,"",0],[3416,34,5,"クランベリーチョコ",3416,1,null,null,[[3211,1],[3111,1]],270,"",0],[3501,35,1,"玄米茶",3501,1,null,null,[[2403,2],[1301,8]],108,"",0],[3502,35,1,"小麦茶",3502,1,null,null,[[1001,50],[1301,10]],108,"",0],[3503,35,2,"イチゴジュース",3503,1,null,null,[[1009,8],[1303,8]],108,"",0],[3504,35,2,"サトウキビジュース",3504,1,null,null,[[1011,6]],54,"",0],[3505,35,2,"リンゴジュース",3505,1,null,null,[[1105,8],[1303,8]],108,"",0],[3506,35,2,"ポテト入りクワス",3506,1,null,null,[[1002,15],[3203,1],[1303,8]],216,"ノート",0],[3507,35,3,"ブドウジュース",3507,1,null,null,[[1013,9],[1305,6]],108,"",0],[3508,35,3,"高麗人参ジュース",3508,1,null,null,[[3108,1],[1305,6]],108,"",0],[3509,35,3,"葡萄レモンジュース",3509,1,null,null,[[1013,9],[1103,16],[1305,6]],162,"",0],[3510,35,3,"ウォルナットミルク",3510,1,null,null,[[1110,6],[1305,6]],108,"",0],[3511,35,4,"クランベリージュース",3511,1,null,null,[[1016,7],[1307,6]],108,"",0],[3512,35,4,"ココナッツドリンク",3512,1,null,null,[[1113,5]],54,"",0],[3513,35,5,"ココナッツココア",3513,1,null,null,[[1113,5],[2409,1]],108,"",0],[3514,35,5,"ホットココア",3514,1,null,null,[[2409,1],[1307,6]],108,"",0],[3515,35,5,"オレンジのフラワーウォーター",3515,1,null,null,[[1116,8],[1307,6]],108,"",0],[3516,35,5,"アガベドリンク",3516,1,null,null,[[3213,1],[1307,6]],162,"",0],[3601,36,1,"桜の塩漬け",3601,1,null,null,[[1104,7],[1601,13]],108,"",0],[3602,36,1,"醤油",3602,1,null,null,[[1005,16],[1601,13]],108,"",0],[3681,36,1,"双月の漬物",3681,1,null,null,[[1081,8],[1082,8],[3604,1]],162,"シーズン",0],[3603,36,2,"ライスミルク",3603,1,null,null,[[2403,1],[1303,8],[3203,1]],216,"",0],[3604,36,2,"リンゴ酢",3604,1,null,null,[[1105,8]],54,"",0],[3605,36,2,"上級ライスミルク",3605,1,null,null,[[2403,1],[1303,8],[3203,1]],216,"キッチン",4],[3606,36,3,"米酢",3606,1,null,null,[[2405,1]],108,"",0],[3607,36,3,"塩レモン",3607,1,null,null,[[1103,16],[1601,13]],108,"",0],[3608,36,3,"上級塩レモン",3608,1,null,null,[[1103,16],[1601,13]],108,"キッチン",5],[3609,36,4,"イチゴのシロップ漬け",3609,1,null,null,[[1106,18],[1009,8]],108,"",0],[3610,36,5,"オレンジの花のシロップ漬け",3610,1,null,null,[[3213,1],[1116,8]],162,"",0],[4101,41,1,"竹線香",4101,1,null,null,[[1102,15],[1401,2]],108,"",0],[4102,41,2,"バラの香り",4102,1,null,null,[[1006,12],[1401,2]],108,"",0],[4103,41,2,"桜の香り",4103,1,null,null,[[3103,1],[1401,4]],108,"",0],[4104,41,3,"ラベンダーの香り",4104,1,null,null,[[1010,11],[1401,2]],108,"",0],[4105,41,3,"レモンの香り",4105,1,null,null,[[1103,12],[1401,2]],108,"",0],[4106,41,3,"上級レモンアロマ",4106,1,null,null,[[1103,12],[1401,2]],108,"クラフト作業",3],[4107,41,4,"高麗人参入りハーブティー",4107,1,null,null,[[2406,1],[1401,8]],108,"",0],[4108,41,5,"石けん",4108,1,null,null,[[2408,1],[1703,6],[1305,6]],162,"",0],[4109,41,5,"上級石けん",4109,1,null,null,[[2408,1],[1703,6],[1305,6]],162,"クラフト作業",5],[4110,41,6,"調合香水",4110,1,null,null,[[3112,1],[1307,6]],108,"",0],[4111,41,6,"オレンジの香り",4111,1,null,null,[[1116,8],[1401,8]],108,"",0],[4112,41,6,"ボディローション",4112,1,null,null,[[1116,8],[2408,2]],108,"ノート",0],[4113,41,6,"上級調合香水",4113,1,null,null,[[3112,1],[1307,6]],108,"クラフト作業",7],[4201,42,1,"木彫り",4201,1,null,null,[[1101,19]],54,"",0],[4281,42,1,"豊穣の盛り合わせ",4281,1,null,null,[[3381,1],[3482,1]],270,"シーズン",0],[4202,42,2,"竹かご",4202,1,null,null,[[1102,10]],54,"",0],[4203,42,2,"水磨き石",4203,1,null,null,[[1201,18],[1301,5]],108,"",0],[4204,42,2,"上級水磨き石",4204,1,null,null,[[1201,18],[1301,5]],108,"クラフト作業",1],[4205,42,3,"ローズアロマチップ",4205,1,null,null,[[4102,1],[1102,13]],162,"",0],[4206,42,3,"陶器",4206,1,null,null,[[1202,15],[1301,8]],108,"",0],[4207,42,3,"上級ローズアロマチップ",4207,1,null,null,[[4102,1],[1102,13]],162,"クラフト作業",2],[4208,42,4,"花束",4208,1,null,null,[[1006,8],[1010,7]],108,"",0],[4209,42,4,"貝殻の工芸品",4209,1,null,null,[[1203,6],[2301,1]],108,"",0],[4210,42,4,"ラベンダーのサシェ",4210,1,null,null,[[2404,1],[2303,1]],108,"",0],[4211,42,5,"風鈴",4211,1,null,null,[[1204,5],[2302,1],[1501,2]],162,"",0],[4212,42,5,"スターライト",4212,1,null,null,[[1204,5],[1501,2]],108,"",0],[4213,42,5,"ドリームキャッチャー",4213,1,null,null,[[2301,1],[2302,1]],108,"",0],[4214,42,5,"上級風鈴",4214,1,null,null,[[1204,5],[2302,1],[1501,2]],162,"クラフト作業",4],[4215,42,6,"ラバーダック",4215,1,null,null,[[1112,3]],54,"",0],[4216,42,6,"真珠のネックレス",4216,1,null,null,[[1603,2],[2305,1]],108,"",0],[4217,42,6,"草編みの玩具",4217,1,null,null,[[2305,1]],54,"",0],[4218,42,6,"磁器",4218,1,null,null,[[1205,4],[1305,6]],108,"",0],[4219,42,7,"染料",4219,1,null,null,[[1703,6],[9001,8]],108,"",0],[4220,42,7,"宝石の結晶塵",4220,1,null,null,[[1206,2],[9001,8]],108,"",0],[4221,42,7,"生け花",4221,1,null,null,[[3112,1],[4218,1]],162,"ノート",0],[4222,42,7,"高級宝石の結晶塵",4222,1,null,null,[[1206,2],[9001,8]],108,"クラフト作業",6],[4223,42,8,"ぬいぐるみ",4223,1,null,null,[[2306,1],[2304,1]],216,"",0]],"facs":[[10,"畑"],[11,"森"],[12,"鉱山"],[13,"井戸"],[14,"ミツドリハウス"],[15,"星降るハンモック"],[16,"潮の砂城"],[17,"わたぐも草ベッド"],[21,"木工台"],[22,"煙突鍛造炉"],[23,"観覧車ふう糸車"],[24,"メリーゴーランド式ミル"],[31,"メロディ乾燥機"],[32,"煮込み鍋"],[33,"クレーンゲーム式コンロ"],[34,"大火力かまど"],[35,"ポンポン醸造樽"],[36,"熟成漬け込み樽"],[41,"蓄音機ふう調香台"],[42,"作業台"]]};</script>
+<script>
+// ===== ゲームデータ＋入力 → 計算用モデル =====
+const POWER_FACS = (f) => f >= 20 || f === 12 || f === 13;   // 電力モードにできる施設
+const EFF_FACS = (f) => f >= 14 && f <= 17;                  // アニモ専用（効率で時間が変わる）
+const LVUP_ITEMS = [1190, 2101, 2102, 2103, 2104, 1290, 2201, 2202, 2203, 2204];
+// 何レベルになるための条件か
+const LVUP_REQ = {
+  10: { mats: { 2101: 2000, 2201: 2400 }, coin: 510000, comfort: 13000, hours: 3.5 },
+  11: { mats: { 2102: 320, 2202: 350 }, coin: 680000, comfort: 13500, hours: 4 },
+  17: { mats: { 2103: 630, 2203: 380 }, coin: 8630000, comfort: 17000, hours: 9 }
+};
+
+function defaultState() {
+  const lv = (o) => { const a = [0, 0, 0, 0, 0, 0, 0, 0]; for (const k in o) a[k - 1] = o[k]; return a; };
+  const facs = {
+    10: { lv: lv({ 6: 32, 7: 2 }) }, 11: { lv: lv({ 5: 17 }) }, 12: { lv: lv({ 4: 1, 5: 7 }), mode: '電力' }, 13: { lv: lv({ 2: 3 }), mode: '電力' },
+    14: { lv: lv({ 2: 1 }), eff: 120 }, 15: { lv: lv({ 1: 1 }), eff: 40 }, 16: { lv: lv({ 2: 1, 3: 1 }), eff: 168 }, 17: { lv: lv({ 2: 1, 3: 1 }), eff: 160 },
+    21: { lv: lv({ 2: 2, 3: 1 }) }, 22: { lv: lv({ 2: 2, 3: 1 }) }, 23: { lv: lv({ 3: 2 }) }, 24: { lv: lv({ 4: 2 }) },
+    31: { lv: lv({ 6: 2 }) }, 32: { lv: lv({ 4: 1, 5: 1 }) }, 33: { lv: lv({ 5: 2 }) }, 34: { lv: lv({ 3: 1, 4: 1 }) },
+    35: { lv: lv({ 3: 2 }) }, 36: { lv: lv({ 3: 2 }) }, 41: { lv: lv({ 4: 2 }) }, 42: { lv: lv({ 6: 2 }) }
+  };
+  for (const f in facs) {
+    if (POWER_FACS(+f) && !facs[f].mode) facs[f].mode = '電力';
+    if (EFF_FACS(+f) && facs[f].eff == null) facs[f].eff = 100;
+  }
+  return {
+    v: 1, homeLv: 16, facs,
+    power: { on: true, module: 3, maxW: 2000, wPer: 15 },
+    mods: { '生態': 5, 'キッチン': 3, 'クラフト作業': 3, '資源探知機': 6 },
+    notes: { 3208: true, 3281: true, 3381: true, 3481: true, 3482: true, 3681: true, 4281: true, 1081: true, 1082: true },
+    lvup: { stock: { 2103: 183, 2203: 170 }, coin: 5699437, manual: {} },
+    calcMode: 'coin'
+  };
+}
+
+function lvupTargets(state) {
+  const req = LVUP_REQ[state.homeLv + 1];
+  const mats = {};
+  for (const c of LVUP_ITEMS) {
+    const man = state.lvup.manual[c];
+    mats[c] = man != null && man !== '' ? +man : (req && req.mats[c]) || 0;
+  }
+  const coin = state.lvup.manual.coin != null && state.lvup.manual.coin !== '' ? +state.lvup.manual.coin : (req ? req.coin : 0);
+  return { known: !!req, mats, coin, req };
+}
+
+function buildModel(D, state) {
+  const items = {};
+  for (const [code, name, sell, buy, nosale] of D.items) items[code] = { name, sell: nosale ? 0 : (sell || 0), buy: buy == null ? null : buy };
+  const caps = {}, avgLv = {};
+  for (const [code] of D.facs) {
+    const a = (state.facs[code] && state.facs[code].lv) || [0, 0, 0, 0, 0, 0, 0, 0];
+    const cap = []; let acc = 0, sum = 0, cnt = 0;
+    for (let L = 8; L >= 1; L--) { acc += +a[L - 1] || 0; cap[L - 1] = acc; }
+    for (let L = 1; L <= 8; L++) { sum += L * (+a[L - 1] || 0); cnt += +a[L - 1] || 0; }
+    caps[code] = cap; avgLv[code] = cnt ? sum / cnt : 0;
+  }
+  const recs = [];
+  for (const r of D.recipes) {
+    const [code, fac, lv, name, out, oq, by, bq, ins, sec0, cond, clv] = r;
+    if (!caps[fac] || sec0 <= 0) continue;
+    if (cond === 'ノート' || cond === 'シーズン' || cond === 'コラボ') { if (!state.notes[code]) continue; }
+    else if (cond) { if ((+state.mods[cond] || 0) < clv) continue; }
+    const fs = state.facs[fac] || {};
+    const sec = EFF_FACS(fac) ? sec0 / ((+fs.eff || 100) / 100) : sec0;
+    const rate = 3600 / sec;
+    const coef = {};
+    const add = (k, q) => { if (k == null) return; coef[k] = (coef[k] || 0) + q * rate; };
+    add(out, oq); if (by) add(by, bq || 0); for (const [k, q] of ins) add(k, -q);
+    let p = 0; for (const k in coef) p += (items[k] ? items[k].sell : 0) * coef[k];
+    const w = state.power.on && POWER_FACS(fac) && fs.mode === '電力' ? (+state.power.wPer || 0) * avgLv[fac] : 0;
+    recs.push({ code, fac, lv, name, coef, p, w, rate, ins, out });
+  }
+  const t = lvupTargets(state), tgt = {};
+  for (const c in t.mats) { const d = t.mats[c] - (+state.lvup.stock[c] || 0); if (d > 0) tgt[c] = d; }
+  return { items, recs, caps, powCap: +state.power.maxW || 0, tgt, targets: t };
+}
+
+if (typeof module !== 'undefined') module.exports = { defaultState, buildModel, lvupTargets, LVUP_ITEMS, LVUP_REQ, POWER_FACS, EFF_FACS };
+
+</script>
+<script>
+// ===== 最適化（外部ライブラリなし）=====
+// 1) 小数のまま最適化（シンプレックス法） 2) 台数を整数に丸める 3) 1台ずつ入れ替えて改善
+// 素材優先モード：目標の不足分をそろえる速さ s（＝1/時間）を最大、同じならコイン最大
+const PRIO_W = 1e11;
+
+function simplexMax(c, A, b) {
+  const m = A.length, n = c.length, W = n + m;
+  const T = new Array(m);
+  for (let i = 0; i < m; i++) {
+    const row = new Float64Array(W + 1);
+    for (let j = 0; j < n; j++) row[j] = A[i][j];
+    row[n + i] = 1; row[W] = b[i]; T[i] = row;
+  }
+  const z = new Float64Array(W + 1);
+  for (let j = 0; j < n; j++) z[j] = -c[j];
+  const basis = new Int32Array(m);
+  for (let i = 0; i < m; i++) basis[i] = n + i;
+  const EPS = 1e-9;
+  let degen = 0;
+  for (let it = 0; it < 50000; it++) {
+    const bland = degen > 50;
+    let enter = -1, best = -EPS;
+    for (let j = 0; j < W; j++) {
+      if (z[j] < -EPS) {
+        if (bland) { enter = j; break; }
+        if (z[j] < best) { best = z[j]; enter = j; }
+      }
+    }
+    if (enter < 0) break;
+    let leave = -1, ratio = 0;
+    for (let i = 0; i < m; i++) {
+      const a = T[i][enter];
+      if (a > EPS) {
+        const r = T[i][W] / a;
+        if (leave < 0 || r < ratio - EPS || (Math.abs(r - ratio) <= EPS && basis[i] < basis[leave])) { leave = i; ratio = r; }
+      }
+    }
+    if (leave < 0) throw new Error('計算が発散しました');
+    degen = ratio <= EPS ? degen + 1 : 0;
+    const prow = T[leave], piv = prow[enter];
+    for (let j = 0; j <= W; j++) prow[j] /= piv;
+    for (let i = 0; i < m; i++) {
+      if (i === leave) continue;
+      const f = T[i][enter];
+      if (f !== 0) { const Ti = T[i]; for (let j = 0; j <= W; j++) Ti[j] -= f * prow[j]; }
+    }
+    const f = z[enter];
+    if (f !== 0) for (let j = 0; j <= W; j++) z[j] -= f * prow[j];
+    basis[leave] = enter;
+  }
+  const x = new Float64Array(n);
+  for (let i = 0; i < m; i++) if (basis[i] < n) x[basis[i]] = T[i][W];
+  return { x, obj: z[W] };
+}
+
+// model: { items:{code:{sell,buy}}, recs:[{fac,lv,coef:{code:v},w,p,name,...}], caps:{fac:[cap L1..L8]}, powCap, tgt:{code:deficit} }
+function makeSolver(model) {
+  const R = model.recs, nR = R.length;
+  const caps = model.caps;
+  let prio = false, chain = new Array(nR).fill(false);
+
+  function solveLP(y) {           // y=null: 小数（容量で縛る）
+    const xs = [];
+    for (let j = 0; j < nR; j++) if (!y || y[j] > 0 || (prio && chain[j])) xs.push(j);
+    if (!xs.length) return null;
+    const used = new Set();
+    for (const j of xs) for (const k in R[j].coef) used.add(k);
+    const buys = [...used].filter((k) => model.items[k] && model.items[k].buy != null);
+    const nx = xs.length, nb = buys.length;
+    let sCol = -1, nv = nx + nb;
+    if (prio) {
+      let ok = Object.keys(model.tgt).length > 0;
+      for (const k in model.tgt) if (!used.has(k)) ok = false;
+      if (ok) { sCol = nv; nv++; }
+    }
+    const c = new Array(nv).fill(0);
+    xs.forEach((j, t) => { c[t] = R[j].p; });
+    buys.forEach((k, t) => { const it = model.items[k]; c[nx + t] = it.sell - it.buy - 0.001; });
+    if (sCol >= 0) c[sCol] = PRIO_W;
+    const A = [], b = [];
+    const bnd = xs.map((j) => !!y && !(prio && chain[j]));
+    xs.forEach((j, t) => { if (bnd[t]) { const r = new Array(nv).fill(0); r[t] = 1; A.push(r); b.push(y[j]); } });
+    for (const f in caps) {
+      for (let L = 1; L <= 8; L++) {
+        let any = false; const r = new Array(nv).fill(0);
+        xs.forEach((j, t) => { if (!bnd[t] && String(R[j].fac) === f && R[j].lv >= L) { r[t] = 1; any = true; } });
+        if (any) { A.push(r); b.push(caps[f][L - 1]); }
+      }
+    }
+    for (const k of used) {
+      const r = new Array(nv).fill(0);
+      xs.forEach((j, t) => { const v = R[j].coef[k]; if (v) r[t] = -v; });
+      const bi = buys.indexOf(k); if (bi >= 0) r[nx + bi] = -1;
+      if (sCol >= 0 && model.tgt[k]) r[sCol] = model.tgt[k];
+      A.push(r); b.push(0);
+    }
+    if (xs.some((j) => R[j].w > 0)) {
+      const r = new Array(nv).fill(0); xs.forEach((j, t) => { r[t] = R[j].w; }); A.push(r); b.push(Math.max(0, model.powCap));
+    }
+    const { x, obj } = simplexMax(c, A, b);
+    return { xs, buys, x, obj, s: sCol >= 0 ? x[sCol] : 0 };
+  }
+
+  function evalPlan(y) {
+    const lp = solveLP(y);
+    if (!lp) return { v: -1e18, lp: null };
+    let sum = 0; for (let j = 0; j < nR; j++) sum += y[j];
+    return { v: lp.obj - 0.01 * sum, lp };
+  }
+
+  function fits(y, j) {
+    const cap = caps[R[j].fac]; if (!cap) return false;
+    for (let L = 1; L <= R[j].lv; L++) {
+      let s = 0;
+      for (let t = 0; t < nR; t++) if (R[t].fac === R[j].fac && R[t].lv >= L) s += y[t];
+      if (s + 1 > cap[L - 1] + 1e-9) return false;
+    }
+    return true;
+  }
+
+  function round(xr) {
+    const y = new Array(nR).fill(0), order = [];
+    for (let j = 0; j < nR; j++) {
+      if (xr[j] > 1e-6 && !(prio && chain[j])) {
+        for (let k = 0; k < Math.floor(xr[j] + 1e-6); k++) if (fits(y, j)) y[j]++;
+        const fr = xr[j] - y[j];
+        if (fr > 1e-6) order.push([R[j].fac < 20 ? fr : 1 + xr[j], j]);
+      }
+    }
+    order.sort((a, b) => b[0] - a[0]);
+    for (const [, j] of order) if (fits(y, j)) y[j]++;
+    return y;
+  }
+
+  function improve(y, best, passes, onProgress) {
+    const facs = [...new Set(R.map((r) => r.fac))];
+    const cand = {};
+    for (const f of facs) {
+      cand[f] = R.map((r, j) => j).filter((j) => R[j].fac === f && caps[f] && caps[f][R[j].lv - 1] > 0)
+        .sort((a, b) => R[b].p - R[a].p).slice(0, 6);
+    }
+    let n = 0;
+    for (let ps = 0; ps < passes; ps++) {
+      let imp = false;
+      for (const f of facs) {
+        if (prio && R.some((r, j) => r.fac === f && chain[j])) continue;
+        const js = R.map((r, j) => j).filter((j) => R[j].fac === f && y[j] > 0);
+        const ks = [...new Set([...cand[f], ...js])];
+        for (const j of js) {
+          for (const k of ks) {
+            if (k === j || y[j] === 0) continue;
+            y[j]--;
+            if (fits(y, k)) {
+              y[k]++; const e = evalPlan(y); n++;
+              if (e.v > best + 1e-6) { best = e.v; imp = true; continue; }
+              y[k]--;
+            }
+            y[j]++;
+          }
+          if (y[j] > 0) {
+            y[j]--; const e = evalPlan(y); n++;
+            if (e.v > best + 1e-6) { best = e.v; imp = true; } else y[j]++;
+          }
+        }
+        if (onProgress) onProgress(n);
+      }
+      if (!imp) break;
+    }
+    return best;
+  }
+
+  function solveFull(passes = 3) {
+    const lp = solveLP(null);
+    const xr = new Array(nR).fill(0);
+    if (lp) lp.xs.forEach((j, t) => { xr[j] = lp.x[t]; });
+    const y = round(xr);
+    let best = evalPlan(y).v;
+    best = improve(y, best, passes);
+    const fin = evalPlan(y);
+    return { y, ...fin };
+  }
+
+  // 目標から材料をさかのぼり、その工程にある加工施設を「時間で切り替える」施設にする
+  function setChain() {
+    const need = new Set(Object.keys(model.tgt));
+    let chg = true;
+    while (chg) {
+      chg = false;
+      for (const r of R) {
+        if (r.fac < 20) continue;
+        if (Object.keys(r.coef).some((k) => r.coef[k] > 0 && need.has(k))) {
+          for (const k in r.coef) if (r.coef[k] < 0 && !need.has(k)) { need.add(k); chg = true; }
+        }
+      }
+    }
+    const fset = new Set();
+    for (const r of R) if (r.fac >= 20 && Object.keys(r.coef).some((k) => r.coef[k] > 0 && need.has(k))) fset.add(r.fac);
+    chain = R.map((r) => fset.has(r.fac));
+    return need;
+  }
+
+  // コイン最大の配置のまま、目標の工程に1台ずつ割り当てた場合の達成速度 s
+  function goalFixed(y0) {
+    const need = setChain();
+    const y = y0.slice();
+    const cr = R.map((r, j) => j).filter((j) => chain[j] && Object.keys(R[j].coef).some((k) => R[j].coef[k] > 0 && need.has(k)))
+      .sort((a, b) => R[b].lv - R[a].lv);
+    for (const j of cr) if (y[j] === 0 && fits(y, j)) y[j] = 1;
+    const keep = chain; chain = new Array(nR).fill(false); prio = true;
+    const e = evalPlan(y);
+    prio = false; chain = keep;
+    return e.lp ? e.lp.s : 0;
+  }
+
+  return {
+    R, caps, fits, evalPlan, solveFull, goalFixed,
+    setPrio(on) { prio = on; if (on) return setChain(); chain = new Array(nR).fill(false); return null; },
+    chainOf: () => chain,
+    needItems: () => setChain()
+  };
+}
+
+</script>
+<script>
+// ===== 画面 =====
+const D = window.GAME_DATA;
+const FAC_NAME = Object.fromEntries(D.facs.map(([c, n]) => [c, n]));
+const ITEM = Object.fromEntries(D.items.map((r) => [r[0], { name: r[1], sell: r[2], buy: r[3] }]));
+const NOTE_RECS = D.recipes.filter((r) => ['ノート', 'シーズン', 'コラボ'].includes(r[10]));
+const MULTI = new Set([10, 11, 12, 13]);           // 台数を分けて使う施設
+const STORE_KEY = 'aniimo-planner-v1';
+const fmt = (n, d = 0) => (n == null || !isFinite(n) ? '—' : Number(n).toLocaleString('ja-JP', { maximumFractionDigits: d, minimumFractionDigits: d }));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const hrs = (h) => (h == null || !isFinite(h) ? '—' : h < 1 ? '1時間未満' : '約' + fmt(h) + '時間' + (h >= 48 ? '（' + fmt(h / 24, 1) + '日）' : ''));
+
+let state = load() || defaultState();
+let tab = 'main';
+let result = null;
+let pendingShare = null;
+
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); if (s && s.v === 1) return s; } catch (e) { /* 保存できない環境 */ }
+  return null;
+}
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* 無視 */ } }
+
+// ---- 共有用URL ----
+async function encodeState() {
+  const json = JSON.stringify(state);
+  const b64 = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  if (window.CompressionStream) {
+    const cs = new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const buf = new Uint8Array(await new Response(cs).arrayBuffer());
+    return 'z' + b64(buf);
+  }
+  return 'j' + b64(new TextEncoder().encode(json));
+}
+async function decodeState(s) {
+  const bin = atob(s.slice(1).replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  let json;
+  if (s[0] === 'z') {
+    const ds = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    json = await new Response(ds).text();
+  } else json = new TextDecoder().decode(bytes);
+  const o = JSON.parse(json);
+  if (!o || o.v !== 1) throw new Error('形式が違います');
+  return o;
+}
+async function copyShareUrl() {
+  const url = location.href.split('#')[0] + '#d=' + (await encodeState());
+  try { await navigator.clipboard.writeText(url); toast('共有用URLをコピーしました（' + url.length + '文字）'); }
+  catch (e) { prompt('このURLをコピーしてください', url); }
+}
+function toast(msg) {
+  const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2600);
+}
+function backupFile() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(state, null, 1)], { type: 'application/json' }));
+  a.download = 'aniimo-planner.json'; a.click();
+}
+
+// ---- 計算 ----
+function runCalc() {
+  const model = buildModel(D, state);
+  const S = makeSolver(model);
+  const prio = state.calcMode === 'prio';
+  const hasTgt = Object.keys(model.tgt).length > 0;
+  const t0 = performance.now();
+  let coinRun, out;
+  S.setPrio(false);
+  coinRun = S.solveFull();
+  if (prio && hasTgt) { S.setPrio(true); out = S.solveFull(); } else out = coinRun;
+  const lp = out.lp, R = S.R;
+  const x = new Array(R.length).fill(0);
+  if (lp) lp.xs.forEach((j, t) => { x[j] = lp.x[t]; });
+  const coinH = lp ? lp.obj - (prio && hasTgt ? 1e11 * lp.s : 0) : 0;
+  let s = 0;
+  if (hasTgt) s = prio ? lp.s : (S.setPrio(false), S.goalFixed(coinRun.y));
+  const chain = prio && hasTgt ? S.chainOf() : R.map(() => false);
+  // 施設ごとの表示
+  const byFac = {};
+  R.forEach((r, j) => {
+    const n = chain[j] ? x[j] : out.y[j];
+    if (n <= 1e-3) return;
+    const lab = chain[j] ? r.name + ' ' + fmt(n, 2) + '台分' : r.name + (MULTI.has(r.fac) || n > 1 ? ' ' + n : '');
+    (byFac[r.fac] = byFac[r.fac] || []).push({ lab, t: chain[j] });
+  });
+  // 1日に使う種
+  const seeds = {};
+  R.forEach((r, j) => { if (x[j] > 1e-6) for (const [k, q] of r.ins) if (k < 100) seeds[k] = (seeds[k] || 0) + q * r.rate * x[j] * 24; });
+  // 消費電力
+  let pow = 0; R.forEach((r, j) => { pow += r.w * x[j]; });
+  // 切り替えの目安
+  const guide = [];
+  if (prio && hasTgt && s > 0) {
+    const T = 1 / s, need = S.needItems();
+    const fs = [...new Set(R.filter((r, j) => chain[j]).map((r) => r.fac))];
+    for (const f of fs) {
+      const steps = R.map((r, j) => j).filter((j) => R[j].fac === f && x[j] > 1e-3 && Object.keys(R[j].coef).some((k) => R[j].coef[k] > 0 && need.has(k)))
+        .sort((a, b) => R[a].lv - R[b].lv)
+        .map((j) => { const n = Math.min(S.caps[f][R[j].lv - 1], S.caps[f][0]); return { name: R[j].name, n, h: x[j] * T / n }; });
+      if (steps.length) guide.push({ fac: FAC_NAME[f], steps });
+    }
+  }
+  const coinNeed = Math.max(0, model.targets.coin - (+state.lvup.coin || 0));
+  result = {
+    mode: prio && hasTgt ? 'prio' : 'coin', modeAsked: state.calcMode, hasTgt, coinH, pow, byFac, seeds, guide,
+    T: s > 0 ? 1 / s : (hasTgt ? Infinity : null), coinNeed, coinT: coinNeed > 0 ? coinNeed / Math.max(1, coinH) : 0,
+    ms: Math.round(performance.now() - t0), at: new Date()
+  };
+}
+
+// ---- 描画 ----
+function render() {
+  document.querySelectorAll('[data-tab]').forEach((b) => {
+    b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false');
+  });
+  const main = document.getElementById('view');
+  main.innerHTML = tab === 'home' ? viewHome() : tab === 'lvup' ? viewLvup() : tab === 'main' ? viewMain() : viewSoon();
+  const bn = document.getElementById('banner');
+  bn.hidden = !pendingShare;
+}
+
+function viewSoon() {
+  return `<section class="card"><h2>準備中</h2><p class="muted">この画面は次の版で作ります。</p></section>`;
+}
+
+function viewHome() {
+  const fLv = state.facs[10] ? state.facs[10].lv.reduce((a, b) => a + (+b || 0), 0) : 0;
+  const tLv = state.facs[11] ? state.facs[11].lv.reduce((a, b) => a + (+b || 0), 0) : 0;
+  const hl = +state.homeLv || 0;
+  const rows = D.facs.map(([c, n]) => {
+    const f = state.facs[c] || (state.facs[c] = { lv: [0, 0, 0, 0, 0, 0, 0, 0] });
+    const cells = f.lv.map((v, i) => `<td><input class="num" inputmode="numeric" aria-label="${esc(n)} Lv.${i + 1}" data-fac="${c}" data-lv="${i}" value="${v || ''}"></td>`).join('');
+    let extra = '';
+    if (POWER_FACS(c)) {
+      const on = state.power.on;
+      extra = `<span class="seg sm" role="group" aria-label="${esc(n)}の動かし方">
+        <button data-mode="${c}" data-v="電力" aria-pressed="${f.mode === '電力'}" ${on ? '' : 'disabled'}>電力</button>
+        <button data-mode="${c}" data-v="アニモ" aria-pressed="${f.mode !== '電力'}" ${on ? '' : 'disabled'}>アニモ</button></span>`;
+    } else if (EFF_FACS(c)) {
+      extra = `<label class="eff"><input class="num" inputmode="numeric" aria-label="${esc(n)}のアニモ効率" data-eff="${c}" value="${f.eff ?? ''}"> %</label>`;
+    }
+    return `<tr><th scope="row">${esc(n)}</th>${cells}<td class="r">${f.lv.reduce((a, b) => a + (+b || 0), 0)}</td><td>${extra}</td></tr>`;
+  }).join('');
+  const notes = NOTE_RECS.map((r) => `<label class="chk"><input type="checkbox" data-note="${r[0]}" ${state.notes[r[0]] ? 'checked' : ''}>${esc(r[3])}<span class="tag">${esc(r[10])}</span></label>`).join('');
+  const mods = Object.keys(state.mods).map((m) => `<label class="row">${esc(m)}モジュール<input class="num w" inputmode="numeric" data-mod="${esc(m)}" value="${state.mods[m]}"></label>`).join('');
+  const P = state.power;
+  return `
+  <section class="card hl">
+    <div><h2>ホームレベル</h2><p class="muted">キャンパーのレベル。次のレベルアップ条件（LvUP素材の目標）に使う</p></div>
+    <label class="big">Lv.<input class="num" inputmode="numeric" data-home value="${state.homeLv}"></label>
+  </section>
+  <p class="muted note">目安：畑 ${hl * 2 + 2}区画（入力 ${fLv}）・森 ${hl + 1}区画（入力 ${tLv}）${hl >= 12 ? '' : '・電力はLv.12で解放'}</p>
+  <section class="card">
+    <h2>施設の台数</h2>
+    <p class="muted">施設レベルごとの台数。電力を使える施設（加工施設・鉱山・井戸）は電力／アニモを選ぶ。アニモ専用の施設は担当アニモの効率（空欄なら100%）。</p>
+    <div class="scroll"><table class="grid">
+      <thead><tr><th>施設</th>${[1, 2, 3, 4, 5, 6, 7, 8].map((l) => `<th>Lv.${l}</th>`).join('')}<th>合計</th><th>動かし方／効率</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+  </section>
+  <div class="two">
+    <section class="card">
+      <h2>電力</h2>
+      <p class="muted">部品レベルアップ画面「屋根裏部屋」の電源モジュールで決まる</p>
+      <div class="row">電力を使う<span class="seg" role="group" aria-label="電力">
+        <button data-power="1" aria-pressed="${P.on}">あり</button><button data-power="0" aria-pressed="${!P.on}">なし</button></span></div>
+      <label class="row">電源モジュール Lv<input class="num w" inputmode="numeric" data-pw="module" value="${P.module}"></label>
+      <label class="row">最大発電量（W）<input class="num w" inputmode="numeric" data-pw="maxW" value="${P.maxW}"></label>
+      <label class="row">1台の消費電力（W／施設Lv）<input class="num w" inputmode="numeric" data-pw="wPer" value="${P.wPer}"></label>
+      <p class="muted small">「なし」にすると、全施設をアニモで動かす前提で計算する</p>
+    </section>
+    <section class="card">
+      <h2>モジュール</h2>
+      <p class="muted">部品レベルアップ画面「車室内」のレベル。高速・上級レシピの解放に使う</p>
+      ${mods}
+    </section>
+  </div>
+  <section class="card">
+    <h2>レシピノート</h2>
+    <p class="muted">持っているものにチェック</p>
+    <div class="notes">${notes}</div>
+  </section>`;
+}
+
+function viewLvup() {
+  const t = lvupTargets(state), next = (+state.homeLv || 0) + 1;
+  const rows = LVUP_ITEMS.map((c) => {
+    const auto = t.req && t.req.mats[c] ? t.req.mats[c] : 0;
+    const man = state.lvup.manual[c];
+    const goal = t.mats[c], stock = +state.lvup.stock[c] || 0, need = Math.max(0, goal - stock);
+    return `<tr><th scope="row">${esc(ITEM[c].name)}</th>
+      <td class="r"><input class="num w" inputmode="numeric" data-goal="${c}" placeholder="${auto || ''}" value="${man ?? ''}" aria-label="${esc(ITEM[c].name)}の目標"></td>
+      <td class="r"><input class="num w" inputmode="numeric" data-stock="${c}" value="${state.lvup.stock[c] ?? ''}" aria-label="${esc(ITEM[c].name)}の在庫"></td>
+      <td class="r b">${goal ? fmt(need) : '—'}</td></tr>`;
+  }).join('');
+  const coinGoal = t.coin, coinNeed = Math.max(0, coinGoal - (+state.lvup.coin || 0));
+  const req = t.req;
+  return `
+  <section class="card">
+    <h2>Lv.${next}になるための条件</h2>
+    ${req ? `<p class="muted">快適度 ${fmt(req.comfort)}・待ち時間 ${req.hours}時間・畑 ${(next - 1) * 2 + 2}カ所・植林地 ${next}カ所</p>`
+    : `<p class="warn">このレベルの条件はまだ登録されていません。目標を手で入力してください（わかったら教えてもらえれば登録します）。</p>`}
+    <p class="muted small">目標は自動で入ります（薄い数字）。変えたいときだけ入力してください。</p>
+    <div class="scroll"><table class="grid lv">
+      <thead><tr><th>素材</th><th>目標</th><th>在庫</th><th>不足</th></tr></thead>
+      <tbody>${rows}
+        <tr class="sep"><th scope="row">コイン</th>
+          <td class="r"><input class="num ww" inputmode="numeric" data-goal="coin" placeholder="${req ? req.coin : ''}" value="${state.lvup.manual.coin ?? ''}" aria-label="必要コイン"></td>
+          <td class="r"><input class="num ww" inputmode="numeric" data-coin value="${state.lvup.coin ?? ''}" aria-label="所持コイン"></td>
+          <td class="r b">${coinGoal ? fmt(coinNeed) : '—'}</td></tr>
+      </tbody></table></div>
+  </section>`;
+}
+
+function viewMain() {
+  const m = state.calcMode;
+  let body = '';
+  if (!result) body = `<section class="card"><p class="muted">「計算する」を押すと、施設ごとに設定するレシピが出ます。</p></section>`;
+  else {
+    const r = result;
+    const facCards = D.facs.filter(([c]) => (state.facs[c] && state.facs[c].lv.some((v) => +v > 0))).map(([c, n]) => {
+      const total = state.facs[c].lv.reduce((a, b) => a + (+b || 0), 0);
+      const chips = (r.byFac[c] || []).map((x) => `<span class="chip${x.t ? ' t' : ''}">${esc(x.lab)}</span>`).join('') || '<span class="chip o">使わない</span>';
+      return `<div class="fac"><div class="fh"><b>${esc(n)}</b><span class="muted">${total}台</span></div><div class="chips">${chips}</div></div>`;
+    }).join('');
+    const seedRows = Object.entries(r.seeds).sort((a, b) => b[1] * (ITEM[b[0]].buy || 0) - a[1] * (ITEM[a[0]].buy || 0)).map(([k, n]) => {
+      const p = ITEM[k].buy;
+      return `<tr><th scope="row">${esc(ITEM[k].name)}</th><td class="r b">${fmt(n)}</td><td class="r">${p == null ? '—' : fmt(p)}</td><td class="r">${p == null ? '—' : fmt(n * p)}</td></tr>`;
+    }).join('');
+    const seedTotal = Object.entries(r.seeds).reduce((a, [k, n]) => a + n * (ITEM[k].buy || 0), 0);
+    const goalTxt = !r.hasTgt ? '目標なし' : hrs(r.T);
+    const goalSub = !r.hasTgt ? 'LvUP素材の不足はありません' : r.mode === 'prio' ? '途中で切り替える前提' : '木工台・鍛造炉などを1台ずつ使った場合';
+    const both = r.hasTgt || r.coinNeed > 0 ? Math.max(r.hasTgt ? r.T : 0, r.coinT) : 0;
+    const guide = r.guide.length ? `<section class="card"><h2>切り替えの目安</h2><p class="muted">目標達成まで${hrs(r.T)}の間に、施設ごとに左から順に作る</p>
+      ${r.guide.map((g) => `<p><b>${esc(g.fac)}</b>：${g.steps.map((s) => `${esc(s.name)}（${s.n}台で${hrs(s.h)}）`).join('　→　')}</p>`).join('')}</section>` : '';
+    body = `
+    <section class="cards">
+      <div class="stat"><div class="muted">コイン/時</div><div class="v">${fmt(r.coinH)}</div><div class="muted">1日 ${fmt(r.coinH * 24)}</div></div>
+      <div class="stat"><div class="muted">消費電力</div><div class="v">${fmt(r.pow)} W</div><div class="muted">${state.power.on ? '最大 ' + fmt(state.power.maxW) + ' W' : '電力なし'}</div></div>
+      <div class="stat"><div class="muted">素材の目標達成まで</div><div class="v">${goalTxt}</div><div class="muted">${goalSub}</div></div>
+      <div class="stat"><div class="muted">コインがそろうまで</div><div class="v">${r.coinNeed > 0 ? hrs(r.coinT) : 'そろっている'}</div><div class="muted">${r.coinNeed > 0 ? 'あと ' + fmt(r.coinNeed) + ' コイン' : ''}${both && r.hasTgt ? '・両方そろうまで ' + hrs(both) : ''}</div></div>
+    </section>
+    ${r.modeAsked === 'prio' && !r.hasTgt ? '<p class="warn">LvUP素材の不足がないので、コイン最大で計算しました。</p>' : ''}
+    <section><h2 class="h">施設ごとのレシピ</h2><div class="facs">${facCards}</div></section>
+    ${guide}
+    <section class="card"><div class="fh"><h2>1日に使う種</h2><span class="muted">この配置で24時間動かした場合</span></div>
+      <div class="scroll"><table class="grid lv"><thead><tr><th>種</th><th>1日に使う数</th><th>単価</th><th>1日の種代</th></tr></thead>
+      <tbody>${seedRows || '<tr><td colspan="4" class="muted">種を使うレシピはありません</td></tr>'}
+      <tr class="sep"><th scope="row">合計</th><td></td><td></td><td class="r b">${fmt(seedTotal)}</td></tr></tbody></table></div>
+      <p class="muted small">コイン/時は、種代を引いたあとの金額です。</p></section>
+    <p class="muted small">最終計算：${r.at.toLocaleString('ja-JP')}（${r.ms} ms）</p>`;
+  }
+  return `
+  <section class="card bar">
+    <div><div class="muted small">計算モード</div>
+      <span class="seg" role="group" aria-label="計算モード">
+        <button data-calcmode="coin" aria-pressed="${m === 'coin'}">コイン最大</button>
+        <button data-calcmode="prio" aria-pressed="${m === 'prio'}">LvUP素材優先</button></span></div>
+    <button class="primary" data-run>計算する</button>
+  </section>
+  ${body}`;
+}
+
+// ---- 入力 ----
+function onInput(e) {
+  const el = e.target, d = el.dataset, v = el.value.trim();
+  const num = v === '' ? '' : Math.max(0, Number(v.replace(/[^\d.]/g, '')) || 0);
+  if (d.fac) state.facs[d.fac].lv[+d.lv] = num === '' ? 0 : Math.round(num);
+  else if (d.eff) state.facs[d.eff].eff = num === '' ? null : num;
+  else if (d.mod) state.mods[d.mod] = num === '' ? 0 : num;
+  else if (d.pw) state.power[d.pw] = num === '' ? 0 : num;
+  else if (d.home !== undefined) state.homeLv = num === '' ? 0 : Math.round(num);
+  else if (d.goal) { if (num === '') delete state.lvup.manual[d.goal]; else state.lvup.manual[d.goal] = num; }
+  else if (d.stock) state.lvup.stock[d.stock] = num === '' ? '' : num;
+  else if (d.coin !== undefined) state.lvup.coin = num;
+  else if (d.note) state.notes[d.note] = el.checked;
+  else return;
+  result = null; save();
+}
+function onChange(e) {
+  onInput(e);
+  const keep = document.activeElement && document.activeElement.dataset ? Object.assign({}, document.activeElement.dataset) : null;
+  render();
+  if (keep) { const q = Object.entries(keep).map(([k, v]) => `[data-${k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}="${v}"]`).join(''); const el = q && document.querySelector(q); if (el) el.focus(); }
+}
+async function onClick(e) {
+  const b = e.target.closest('button,[data-tab]'); if (!b) return;
+  const d = b.dataset;
+  if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); return; }
+  if (d.mode) { state.facs[d.mode].mode = d.v; result = null; }
+  else if (d.power) { state.power.on = d.power === '1'; result = null; }
+  else if (d.calcmode) { state.calcMode = d.calcmode; result = null; }
+  else if (d.run !== undefined) {
+    b.disabled = true; b.textContent = '計算中…';
+    await new Promise((r) => setTimeout(r, 30));
+    try { runCalc(); } catch (err) { alertBox('計算できませんでした：' + err.message); }
+  } else if (d.share !== undefined) { await copyShareUrl(); return; }
+  else if (d.backup !== undefined) { backupFile(); return; }
+  else if (d.restore !== undefined) { document.getElementById('file').click(); return; }
+  else if (d.accept !== undefined) { state = pendingShare; pendingShare = null; history.replaceState(null, '', location.pathname); save(); result = null; toast('共有されたデータを読み込みました'); }
+  else if (d.reject !== undefined) { pendingShare = null; history.replaceState(null, '', location.pathname); }
+  else return;
+  save(); render();
+}
+function alertBox(msg) { toast(msg); }
+
+document.addEventListener('change', onChange);
+document.addEventListener('click', onClick);
+document.getElementById('file').addEventListener('change', async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { const o = JSON.parse(await f.text()); if (o.v !== 1) throw new Error(); state = o; save(); result = null; render(); toast('ファイルから読み込みました'); }
+  catch (err) { toast('読み込めないファイルです'); }
+  e.target.value = '';
+});
+
+(async () => {
+  const m = location.hash.match(/#d=(.+)$/);
+  if (m) { try { pendingShare = await decodeState(m[1]); } catch (e) { toast('共有URLを読み込めませんでした'); } }
+  render();
+})();
+
+</script>
+</body>
+</html>
