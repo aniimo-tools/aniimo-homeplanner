@@ -341,6 +341,21 @@ const ENV_TYPES = ['hot', 'warm', 'cool', 'freeze', 'light'];
 const ENV_DEV = { hot: 'heat', warm: 'heat', cool: 'cool', freeze: 'cool', light: 'lamp' };
 const ENV_SLOW = 1.5;   // 推奨環境の範囲外は時間が1.5倍。照明（環境要件）は範囲外だと育たない
 const ENV_FACS = new Set([10, 11, 15, 16, 18]);
+// 施設の建設・レベルアップ費用（ホームコイン、Lv.1〜。aniimotools.dev より）
+const FAC_COST = {
+  10: [10, 60, 700, 6200, 23500, 107000, 480000], 11: [90, 400, 8200, 49000, 199000, 910000],
+  12: [320, 4200, 31000, 143000, 340000, 910000], 13: [1100, 20000, 98000, 240000, 720000],
+  14: [4200, 269000], 15: [54000], 16: [1500, 9800, 81000], 17: [18100, 81000, 320000], 18: [453000],
+  21: [4200, 16300, 75000, 340000], 22: [4200, 16300, 75000, 340000], 23: [8200, 16300, 85000, 360000],
+  24: [170, 1800, 16000, 81000, 320000, 910000],
+  31: [540, 1800, 8200, 36000, 143000, 300000, 910000], 32: [1200, 12300, 16000, 72000, 230000, 910000],
+  33: [540, 1800, 8200, 31000, 143000, 480000, 960000], 34: [5900, 16300, 61000, 240000, 680000],
+  35: [4200, 14000, 61000, 270000, 720000], 36: [5900, 16300, 61000, 240000, 720000],
+  41: [4200, 12300, 27000, 149000, 400000, 720000], 42: [320, 1800, 8200, 31000, 143000, 340000, 910000, 1450000],
+  51: [400, 4200, 24000], 52: [170, 2900, 12000]
+};
+const GEN_COST = [21000, 45000, 120000, 340000, 720000];   // 電源（パチパチ発電機）Lv.1〜5
+const POLE_COST = 3600, ENV_COST = { heat: 8200, cool: 8200, lamp: 15700 };
 // 置ける台数 [熱エネルギー炉, クーラー, 日光ランプ]（プランナーサイトより）
 const ENV_MAX = { 7: [1, 1, 0], 9: [1, 1, 1], 12: [2, 1, 1], 13: [2, 2, 2], 17: [3, 3, 2], 19: [3, 3, 3] };
 function envMax(H) {
@@ -662,13 +677,20 @@ function makeSolver(model) {
     return best;
   }
 
-  function solveFull(passes = 3) {
+  const keyOf = (r) => r.code + '|' + r.mode + '|' + (r.env || '') + '|' + (r.envOut ? 1 : 0);
+  // seed：別の配置（{key: 台数}）。今の結果より良ければそこから改善する（比較で結果が下がらないように）
+  function solveFull(passes = 3, seed = null) {
     envFix = null;
     const lp = solveLP(null);
     const xr = new Array(nR).fill(0);
     if (lp) lp.xs.forEach((j, t) => { xr[j] = lp.x[t]; });
-    const y = round(xr);
+    let y = round(xr);
     let best = evalPlan(y).v;
+    if (seed) {
+      const ys = R.map((r) => seed[keyOf(r)] || 0);
+      const sv = evalPlan(ys).v;
+      if (sv > best) { y = ys; best = sv; }
+    }
     best = improve(y, best, passes);
     if (EV) {   // 熱エネルギー炉・クーラーの設定の振り分けを全通り試す
       let bs = null, bv = -1e18;
@@ -679,7 +701,8 @@ function makeSolver(model) {
       envFix = bs; best = improve(y, bv, passes);
     }
     const fin = evalPlan(y);
-    return { y, ...fin, envFix };
+    const keys = {}; R.forEach((r, j) => { if (y[j] > 0) keys[keyOf(r)] = y[j]; });
+    return { y, ...fin, envFix, keys };
   }
 
   // 目標から材料をさかのぼり、その工程にある加工施設を「時間で切り替える」施設にする
@@ -752,7 +775,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const hrs = (h) => (h == null || !isFinite(h) ? '—' : h < 1 ? '1時間未満' : '約' + fmt(h) + '時間' + (h >= 48 ? '（' + fmt(h / 24, 1) + '日）' : ''));
 
 let state = load() || (() => { const s = defaultState(); s.homeLv = 1; applyHomeLv(s); return s; })();
-let tab = 'main';
+let tab = 'home';
 let result = null;
 let pendingShare = null;
 
@@ -855,6 +878,195 @@ function runCalc() {
   };
 }
 
+
+// ---- レベルアップ推奨 ----
+let lvRec = null;
+const stateSig = () => { const o = Object.assign({}, state); delete o.lvGoal; delete o.calcMode; return JSON.stringify(o); };
+// 1つの設定を計算して、コイン/時と目標までの時間を返す
+function evalState(st, goal, seed) {
+  const model = buildModel(D, st);
+  const S = makeSolver(model);
+  const hasTgt = Object.keys(model.tgt).length > 0;
+  const prio = goal === 'prio' && hasTgt;
+  S.setPrio(prio);
+  const out = S.solveFull(2, seed);
+  const lp = out.lp, R = S.R;
+  const x = new Array(R.length).fill(0);
+  if (lp) lp.xs.forEach((j, t) => { x[j] = lp.x[t]; });
+  let fb = 0, pow = 0; R.forEach((r, j) => { if (r.forced) fb += FORCE_W * x[j]; pow += r.w * x[j]; });
+  const coinH = lp ? lp.obj - (prio ? 1e11 * lp.s : 0) - fb : 0;
+  const T = prio && lp && lp.s > 0 ? 1 / lp.s : (hasTgt ? Infinity : 0);
+  const coinNeed = Math.max(0, model.targets.coin - (+st.lvup.coin || 0));
+  const coinT = coinNeed > 0 ? coinNeed / Math.max(1, coinH) : 0;
+  return { coinH, T, both: Math.max(T, coinT), pow, keys: out.keys, hasTgt, recs: new Set(model.recs.map((r) => r.name)) };
+}
+// 比べる候補（施設のLv上げ・追加、モジュール、電源、熱エネルギー炉など）
+function lvCandidates(st) {
+  const H = +st.homeLv, out = [];
+  for (const [c, n] of D.facs) {
+    const f = st.facs[c]; if (!f) continue;
+    const mx = maxFacLv(c, H), tot = f.lv.reduce((a, v) => a + (+v || 0), 0);
+    const levels = [...new Set(f.lv.map((v, i) => (+v > 0 ? i + 1 : 0)).filter(Boolean))];
+    for (const L of levels) if (L < mx) out.push({ kind: '施設', fac: c, label: `${n}　Lv.${L} → Lv.${L + 1}（1台）`, cost: (FAC_COST[c] || [])[L], apply: (s) => { s.facs[c].lv[L - 1]--; s.facs[c].lv[L] = (+s.facs[c].lv[L] || 0) + 1; } });
+    const mc = maxCount(c, H);
+    if (mc != null && tot < mc && mx > 0) out.push({ kind: '追加', fac: c, label: `${n}を1台追加（Lv.1）`, cost: (FAC_COST[c] || [])[0], apply: (s) => { s.facs[c].lv[0] = (+s.facs[c].lv[0] || 0) + 1; } });
+  }
+  for (const k in st.mods) {
+    const cur = +st.mods[k] || 0;
+    if (cur < modMax(k, H)) out.push({ kind: 'モジュール', label: `${k}モジュール　Lv.${cur} → Lv.${cur + 1}`, apply: (s) => { s.mods[k] = cur + 1; } });
+  }
+  if (st.power.on && H >= POWER_LV) {
+    const m = +st.power.module || 0;
+    if (m < powerModMax(H)) out.push({ kind: '電力', label: `電源モジュール（発電ポール）　Lv.${m} → Lv.${m + 1}`, cost: GEN_COST[m], apply: (s) => { s.power.module = m + 1; } });
+    const pc = poleCount(st);
+    if (pc < maxPoles(H)) out.push({ kind: '電力', label: `発電ポールを1本追加（${pc} → ${pc + 1}本）`, cost: POLE_COST, apply: (s) => { s.power.poles = pc + 1; } });
+  }
+  const e = envState(st), em = envMax(H);
+  [['heat', '熱エネルギー炉', 0], ['cool', 'クーラー', 1], ['lamp', '日光ランプ', 2]].forEach(([k, n, i]) => {
+    if (e[k] < em[i]) out.push({ kind: '環境', label: `${n}を1台追加（${e[k]} → ${e[k] + 1}台）`, cost: ENV_COST[k], apply: (s) => { (s.env = s.env || {})[k] = e[k] + 1; } });
+  });
+  return out;
+}
+async function runLvRec(btn) {
+  const goal = state.lvGoal || 'coin';
+  const sig = stateSig();
+  const base = evalState(state, goal, null);
+  const cands = lvCandidates(state);
+  const rows = [];
+  for (let i = 0; i < cands.length; i++) {
+    if (btn) btn.textContent = `計算中… ${i + 1}/${cands.length}`;
+    await new Promise((r) => setTimeout(r, 0));
+    const st = JSON.parse(JSON.stringify(state));
+    cands[i].apply(st);
+    const r = evalState(st, goal, base.keys);
+    const newR = [...r.recs].filter((n) => !base.recs.has(n));
+    rows.push({ label: cands[i].label, cost: cands[i].cost, gain: Math.max(0, r.coinH - base.coinH), save: isFinite(base.both) ? Math.max(0, base.both - r.both) : (isFinite(r.both) ? Infinity : 0), after: r.both, pow: r.pow, newR });
+  }
+  const prio = goal === 'prio' && base.hasTgt;
+  rows.sort((a, b) => (prio ? (b.save - a.save) || (b.gain - a.gain) : b.gain - a.gain));
+  lvRec = { goal, prio, base, rows, sig, at: new Date() };
+}
+function viewLevelup() {
+  const g = state.lvGoal || 'coin';
+  const H = +state.homeLv;
+  let body = '';
+  if (!H) body = '<p class="warn">ホーム設定でホームレベルを入力してください。</p>';
+  else if (!lvRec) body = '<section class="card"><p class="muted">「計算する」を押すと、1つだけ強化したときの効果を大きい順に並べます。</p></section>';
+  else {
+    const r = lvRec, P = r.prio;
+    const stale = r.sig !== stateSig() || r.goal !== g ? '<p class="warn">設定が変わりました。もう一度計算してください。</p>' : '';
+    const mx = Math.max(1e-9, ...r.rows.map((x) => (P ? (isFinite(x.save) ? x.save : 0) : x.gain)));
+    const bar = (v) => `<div style="height:8px;border-radius:4px;background:var(--accent);width:${Math.round(Math.min(1, v / mx) * 100)}%"></div>`;
+    const rows = r.rows.map((x, i) => `<tr><td>${i + 1}</td><th scope="row">${esc(x.label)}</th>
+      ${P ? `<td class="r b">${x.save > 0 ? (isFinite(x.save) ? hrs(x.save).replace('約', '約') : '達成できるようになる') : '0'}${bar(isFinite(x.save) ? x.save : mx)}</td><td class="r">${hrs(x.after)}</td>` : ''}
+      <td class="r ${P ? '' : 'b'}">${x.gain > 0.5 ? '+' + fmt(x.gain) : '0'}${P ? '' : bar(x.gain)}</td>
+      <td class="r">${x.cost != null ? fmt(x.cost) : '—'}</td>${P ? '' : `<td class="r">${x.cost != null && x.gain > 0.5 ? hrs(x.cost / x.gain) : '—'}</td>`}
+      ${state.power.on ? `<td class="r">${fmt(x.pow)} W</td>` : ''}
+      <td style="white-space:normal;min-width:200px">${x.newR.length ? esc(x.newR.join('、')) : '—'}</td></tr>`).join('');
+    body = stale + `
+    <section class="cards">
+      <div class="stat"><div class="muted">今のコイン/時</div><div class="v">${fmt(r.base.coinH)}</div></div>
+      ${P ? `<div class="stat"><div class="muted">今のレベルアップまで</div><div class="v">${hrs(r.base.both)}</div><div class="muted">素材とコインがそろうまで</div></div>` : ''}
+    </section>
+    ${g === 'prio' && !P ? '<p class="warn">LvUP素材の不足がないので、コイン目的で比べました。</p>' : ''}
+    <section class="card">
+      <div class="scroll"><table class="grid">
+        <thead><tr><th>順位</th><th>強化するもの</th>${P ? '<th>短くなる時間</th><th>強化後のレベルアップまで</th>' : ''}<th>増えるコイン/時</th><th>かかるコイン</th>${P ? '' : '<th>元が取れるまで</th>'}${state.power.on ? '<th>消費電力（後）</th>' : ''}<th>新しく作れるレシピ</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      <p class="muted small">1つだけ強化して、ほかはそのままの場合です。かかるコインはaniimotools.devの値です（モジュールは不明なので「—」）。</p>
+    </section>
+    <p class="muted small">最終計算：${r.at.toLocaleString('ja-JP')}</p>`;
+  }
+  return `
+  <section class="card bar">
+    <div><div class="muted small">目的</div>
+      <span class="seg" role="group" aria-label="目的">
+        <button data-lvgoal="coin" aria-pressed="${g === 'coin'}">コイン</button>
+        <button data-lvgoal="prio" aria-pressed="${g === 'prio'}">レベルアップ</button></span></div>
+    <button class="primary" data-lvrun ${H ? '' : 'disabled'}>計算する</button>
+  </section>
+  ${body}`;
+}
+
+
+// ---- 図鑑 ----
+const book = { tab: 'rec', fac: '', q: '', now: false, sort: 'profit', item: null };
+const IT = (c) => ITEM[c] || { name: String(c) };
+const val = (c) => { const it = ITEM[c]; if (!it) return 0; return it.buy != null ? it.buy : (it.sell || 0); };   // 材料の値段（買えるものは買値、ほかは売値）
+const secTxt = (s) => (s >= 3600 ? Math.floor(s / 3600) + '時間' + (Math.round(s % 3600 / 60) ? Math.round(s % 3600 / 60) + '分' : '') : s >= 60 ? Math.floor(s / 60) + '分' + (s % 60 ? Math.round(s % 60) + '秒' : '') : s + '秒');
+const recProfit = (r) => { const [, , , , out, oq, by, bq, ins, sec] = r; if (!(sec > 0)) return null; let v = (ITEM[out] ? ITEM[out].sell || 0 : 0) * oq + (by ? (ITEM[by] ? ITEM[by].sell || 0 : 0) * (bq || 0) : 0); for (const [k, q] of ins) v -= val(k) * q; return v * 3600 / sec; };
+const condTxt = (r) => (r[10] === 'ノート' || r[10] === 'シーズン' || r[10] === 'コラボ' ? r[10] : r[10] ? `${r[10]}Lv.${r[11]}` : '');
+function canMake(r) {
+  const f = state.facs[r[1]]; if (!f) return false;
+  if (!f.lv.some((v, i) => +v > 0 && i + 1 >= r[2])) return false;
+  if (['ノート', 'シーズン', 'コラボ'].includes(r[10])) return !!state.notes[r[0]];
+  if (r[10]) return (+state.mods[r[10]] || 0) >= r[11];
+  return true;
+}
+const matTxt = (ins) => ins.length ? ins.map(([k, q]) => `<span class="nm" style="gap:4px;margin-right:10px">${ic(k)}${esc(IT(k).name)}×${q}</span>`).join('') : '—';
+const itemBtn = (c) => `<button class="link" style="min-height:0;padding:0;color:var(--accent)" data-bitem="${c}">${esc(IT(c).name)}</button>`;
+function bookRecs() {
+  const q = book.q.trim();
+  let rs = D.recipes.filter((r) => (!book.fac || r[1] === +book.fac) && (!q || r[3].includes(q) || r[8].some(([k]) => IT(k).name.includes(q))) && (!book.now || canMake(r)));
+  rs = rs.map((r) => ({ r, p: recProfit(r) }));
+  if (book.sort === 'profit') rs.sort((a, b) => (b.p ?? -1e18) - (a.p ?? -1e18)); else rs.sort((a, b) => a.r[0] - b.r[0]);
+  return rs;
+}
+function viewBook() {
+  const sub = (k, lab) => `<button data-btab="${k}" aria-pressed="${book.tab === k}">${lab}</button>`;
+  const facOpt = `<option value="">すべての施設</option>` + D.facs.map(([c, n]) => `<option value="${c}" ${String(c) === String(book.fac) ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  let body = '';
+  if (book.tab === 'rec') {
+    const rows = bookRecs().map(({ r, p }) => `<tr${canMake(r) ? '' : ' style="color:var(--muted)"'}><td>${r[0]}</td><th scope="row"><span class="nm">${ic(r[4])}${esc(r[3])}${r[5] > 1 ? ' ×' + r[5] : ''}</span></th>
+      <td>${esc(FAC_NAME[r[1]])} Lv.${r[2]}${condTxt(r) ? `<br><span class="tag">${esc(condTxt(r))}</span>` : ''}</td>
+      <td style="white-space:normal;text-align:left">${matTxt(r[8])}</td><td class="r">${r[9] > 0 ? secTxt(r[9]) : '—'}</td>
+      <td class="r">${ITEM[r[4]] && ITEM[r[4]].sell != null ? fmt(ITEM[r[4]].sell) : '—'}</td><td class="r b">${p == null ? '—' : fmt(p)}</td></tr>`).join('');
+    body = `<section class="card">
+      <div class="row" style="flex-wrap:wrap;justify-content:flex-start;gap:12px">
+        <select class="num" style="width:200px" data-bfac aria-label="施設">${facOpt}</select>
+        <input class="num" style="width:200px;text-align:left;padding:0 8px" data-bq placeholder="名前・材料で検索" value="${esc(book.q)}" aria-label="検索">
+        <label class="chk"><input type="checkbox" data-bnow ${book.now ? 'checked' : ''}>今作れるものだけ</label>
+        <select class="num" style="width:120px" data-bsort aria-label="並び順"><option value="profit" ${book.sort === 'profit' ? 'selected' : ''}>利益順</option><option value="code" ${book.sort === 'code' ? 'selected' : ''}>コード順</option></select>
+      </div>
+      <div class="scroll"><table class="grid"><thead><tr><th>コード</th><th>レシピ</th><th>施設・必要Lv</th><th>材料</th><th>時間</th><th>売値</th><th>利益 コイン/時/台</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" class="muted">該当するレシピはありません</td></tr>'}</tbody></table></div>
+      <p class="muted small">時間はアニモ効率100%のときです。利益は、売値から材料の値段（種は買値、ほかは売値）を引いた額です。灰色は今のホームでは作れないレシピです。</p></section>`;
+  } else if (book.tab === 'item') {
+    const q = book.q.trim();
+    const rows = D.items.filter((i) => !q || i[1].includes(q)).map(([c, n, sell, buy]) => {
+      const mk = D.recipes.filter((r) => r[4] === c || r[6] === c).map((r) => FAC_NAME[r[1]]);
+      const use = D.recipes.filter((r) => r[8].some(([k]) => k === c)).map((r) => r[3]);
+      return `<tr><td>${c}</td><th scope="row"><span class="nm">${ic(c)}${itemBtn(c)}</span></th><td class="r">${sell == null ? '—' : fmt(sell)}</td><td class="r">${buy == null ? '—' : fmt(buy)}</td>
+        <td style="white-space:normal;text-align:left">${esc([...new Set(mk)].join('、') || '—')}</td><td style="white-space:normal;text-align:left">${esc(use.slice(0, 6).join('、') + (use.length > 6 ? ` ほか${use.length - 6}件` : '')) || '—'}</td></tr>`;
+    }).join('');
+    body = `<section class="card">
+      <div class="row" style="justify-content:flex-start"><input class="num" style="width:220px;text-align:left;padding:0 8px" data-bq placeholder="名前で検索" value="${esc(book.q)}" aria-label="検索"></div>
+      <div class="scroll"><table class="grid"><thead><tr><th>コード</th><th>品目</th><th>売値</th><th>買値</th><th>作れる施設</th><th>使い道</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="muted small">品目名を押すと、加工チェーンを表示します。</p></section>`;
+  } else {
+    const opts = D.items.filter((i) => D.recipes.some((r) => r[4] === i[0])).sort((a, b) => a[1].localeCompare(b[1], 'ja'))
+      .map(([c, n]) => `<option value="${c}" ${+book.item === c ? 'selected' : ''}>${esc(n)}</option>`).join('');
+    const tree = (c, depth, seen) => {
+      const rs = D.recipes.filter((r) => r[4] === c && r[9] > 0);
+      const r = rs.find((x) => !x[10] && x[8].length) || rs.find((x) => !x[10]) || rs[0];
+      const head = `${ic(c)}<b>${esc(IT(c).name)}</b>`;
+      if (!r) return `<li>${head}<span class="muted small">（${ITEM[c] && ITEM[c].buy != null ? '買える：' + fmt(ITEM[c].buy) + 'コイン' : '元の素材'}）</span></li>`;
+      const info = `<span class="muted small">　${esc(FAC_NAME[r[1]])} Lv.${r[2]}・${secTxt(r[9])}で${r[5]}個</span>`;
+      if (depth > 8 || seen.has(c)) return `<li>${head}${info}</li>`;
+      const s2 = new Set(seen); s2.add(c);
+      const kids = r[8].map(([k, q]) => tree(k, depth + 1, s2).replace('<li>', `<li><span class="tag">×${q}</span> `)).join('');
+      return `<li>${head}${info}${kids ? `<ul style="list-style:none;margin:4px 0 4px 8px;padding-left:16px;border-left:2px solid var(--line)">${kids}</ul>` : ''}</li>`;
+    };
+    const uses = book.item ? D.recipes.filter((r) => r[8].some(([k]) => k === +book.item)) : [];
+    body = `<section class="card">
+      <div class="row" style="justify-content:flex-start;gap:12px">品目<select class="num" style="width:240px" data-bchain aria-label="品目">${'<option value="">選んでください</option>' + opts}</select></div>
+      ${book.item ? `<ul style="list-style:none;margin:0;padding:0;line-height:2">${tree(+book.item, 0, new Set())}</ul>` : '<p class="muted">品目を選ぶと、材料を元までさかのぼって表示します。</p>'}
+    </section>
+    ${uses.length ? `<section class="card"><h2>${esc(IT(book.item).name)}を材料に使うレシピ</h2><p>${uses.map((r) => `${ic(r[4])}${itemBtn(r[4])}`).join('　')}</p></section>` : ''}`;
+  }
+  return `<section class="card bar"><span class="seg" role="group" aria-label="図鑑の種類">${sub('rec', 'レシピ')}${sub('item', '品目')}${sub('chain', '加工チェーン')}</span></section>${body}`;
+}
+
 // ---- 描画 ----
 function render() {
   document.querySelectorAll('[data-tab]').forEach((b) => {
@@ -865,7 +1077,7 @@ function render() {
   const keepX = main.dataset.view === tab ? [...main.querySelectorAll('.scroll')].map((e) => e.scrollLeft) : [];
   const keepY = main.dataset.view === tab ? window.scrollY : 0;
   main.dataset.view = tab;
-  main.innerHTML = tab === 'home' ? viewHome() : tab === 'lvup' ? viewLvup() : tab === 'main' ? viewMain() : viewSoon();
+  main.innerHTML = tab === 'home' ? viewHome() : tab === 'lvup' ? viewLvup() : tab === 'main' ? viewMain() : tab === 'levelup' ? viewLevelup() : tab === 'book' ? viewBook() : viewSoon();
   main.querySelectorAll('.scroll').forEach((e, i) => { if (keepX[i]) e.scrollLeft = keepX[i]; });
   if (keepY) window.scrollTo(0, keepY);
   const bn = document.getElementById('banner');
@@ -1077,6 +1289,11 @@ function onInput(e) {
   else if (d.stock) state.lvup.stock[d.stock] = num === '' ? '' : num;
   else if (d.coin !== undefined) state.lvup.coin = num;
   else if (d.note) state.notes[d.note] = el.checked;
+  else if (d.bfac !== undefined) { book.fac = v; return; }
+  else if (d.bq !== undefined) { book.q = el.value; return; }
+  else if (d.bnow !== undefined) { book.now = el.checked; return; }
+  else if (d.bsort !== undefined) { book.sort = v; return; }
+  else if (d.bchain !== undefined) { book.item = v ? +v : null; return; }
   else return;
   result = null; save();
 }
@@ -1112,6 +1329,13 @@ async function onClick(e) {
     result = null; toast('施設を最大にしました。台数は、確かめられている数か今の数の多い方です');
   }
   else if (d.calcmode) { state.calcMode = d.calcmode; result = null; }
+  else if (d.lvgoal) { state.lvGoal = d.lvgoal; }
+  else if (d.btab) { book.tab = d.btab; }
+  else if (d.bitem) { book.tab = 'chain'; book.item = +d.bitem; render(); window.scrollTo(0, 0); return; }
+  else if (d.lvrun !== undefined) {
+    b.disabled = true;
+    try { await runLvRec(b); } catch (err) { alertBox('計算できませんでした：' + err.message); }
+  }
   else if (d.run !== undefined) {
     b.disabled = true; b.textContent = '計算中…';
     await new Promise((r) => setTimeout(r, 30));
@@ -1127,6 +1351,11 @@ async function onClick(e) {
 function alertBox(msg) { toast(msg); }
 
 document.addEventListener('change', onChange);
+document.addEventListener('input', (e) => {   // 図鑑の検索は入力するたびに絞り込む
+  if (e.target.dataset.bq === undefined) return;
+  book.q = e.target.value; const pos = e.target.selectionStart;
+  render(); const el = document.querySelector('[data-bq]'); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+});
 document.addEventListener('click', onClick);
 document.getElementById('file').addEventListener('change', async (e) => {
   const f = e.target.files[0]; if (!f) return;
