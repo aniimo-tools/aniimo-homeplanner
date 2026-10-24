@@ -42,6 +42,13 @@ select.num.w{width:100px}
 .big select.num{width:90px;font-size:20px;font-weight:700}
 input.num::placeholder{color:#8C8C84}
 .scroll{overflow-x:auto}
+.facscroll{max-height:75vh;overflow:auto}
+.factbl thead th{position:sticky;top:0;z-index:2}
+.factbl tbody th{position:sticky;left:0;z-index:1;background:var(--card)}
+.factbl thead th:first-child{left:0;z-index:3}
+.factbl td:nth-child(2),.factbl td:nth-child(4),.factbl td:nth-child(6),.factbl td:nth-child(8),
+.factbl thead th:nth-child(2),.factbl thead th:nth-child(4),.factbl thead th:nth-child(6),.factbl thead th:nth-child(8){background:#F0F0EE}
+.factbl thead th:nth-child(2),.factbl thead th:nth-child(4),.factbl thead th:nth-child(6),.factbl thead th:nth-child(8){background:#E2E2DE}
 table.grid{border-collapse:collapse;width:100%;min-width:900px;font-size:14px}
 table.grid.lv{min-width:480px;font-size:15px}
 .grid th,.grid td{padding:6px 8px;border-top:1px solid var(--line);text-align:center;white-space:nowrap}
@@ -236,7 +243,7 @@ function defaultState() {
     v: 1, homeLv: '', facs,
     power: { on: false, module: '', maxW: '', wPer: 15 }, env: { heat: '', cool: '', lamp: '', forest: 12, field: 32 },
     loss: { 10: 2, 11: 2 }, lossDef: 2,   // 畑・森の収穫と植え付けの手間（分／回）
-    mods: { '生態': '', 'キッチン': '', 'クラフト作業': '', '資源探知機': '' },
+    mods: { '生態': '', 'キッチン': '', '資源探知機': '', 'クラフト作業': '' },
     notes: {},
     lvup: { stock: {}, coin: '', manual: {} },
     calcMode: 'coin'
@@ -923,7 +930,8 @@ function lvCandidates(st) {
     const mc = maxCount(c, H);
     if (mc != null && tot < mc && mx > 0) out.push({ kind: '追加', fac: c, label: `${n}を1台追加（Lv.1）`, cost: (FAC_COST[c] || [])[0], apply: (s) => { s.facs[c].lv[0] = (+s.facs[c].lv[0] || 0) + 1; } });
   }
-  for (const k in st.mods) {
+  for (const k of ['生態', 'キッチン', '資源探知機', 'クラフト作業']) {
+    if (!(k in st.mods)) continue;
     const cur = +st.mods[k] || 0;
     if (cur < modMax(k, H)) out.push({ kind: 'モジュール', label: `${k}モジュール　Lv.${cur} → Lv.${cur + 1}`, apply: (s) => { s.mods[k] = cur + 1; } });
   }
@@ -1137,7 +1145,7 @@ function viewHome() {
     return `<tr><th scope="row"><span class="nm">${fic(c)}${esc(n)}</span></th>${cells}<td class="r">${f.lv.reduce((a, b) => a + (+b || 0), 0)}${mc != null ? `<span class="muted small">/${mc}</span>` : ''}</td><td>${extra}</td></tr>`;
   }).join('');
   const notes = NOTE_RECS.map((r) => `<label class="chk"><input type="checkbox" data-note="${r[0]}" ${state.notes[r[0]] ? 'checked' : ''}>${ic(r[4])}${esc(r[3])}<span class="tag">${esc(r[10])}</span></label>`).join('');
-  const mods = Object.keys(state.mods).map((m) => `<div class="row">${esc(m)}モジュール${sel(`data-mod="${esc(m)}" aria-label="${esc(m)}モジュールのLv"`, state.mods[m], modMax(m, +state.homeLv), 0, 'num w')}</div>`).join('');
+  const mods = ['生態', 'キッチン', '資源探知機', 'クラフト作業'].filter((m) => m in state.mods).map((m) => `<div class="row">${esc(m)}モジュール${sel(`data-mod="${esc(m)}" aria-label="${esc(m)}モジュールのLv"`, state.mods[m], modMax(m, +state.homeLv), 0, 'num w')}</div>`).join('');
   const P = state.power;
   const EV = envState(state);
   return `
@@ -1148,7 +1156,7 @@ function viewHome() {
   ${hl ? '' : '<p class="warn">まずホームレベルを入力してください。畑・植林地の区画数などが自動で入ります。</p>'}
   <section class="card">
     <div class="fh"><h2>施設の台数</h2><button class="btn" data-maxall>すべて最大にする</button></div>
-    <div class="scroll"><table class="grid">
+    <div class="scroll facscroll"><table class="grid factbl">
       <thead><tr><th>施設</th>${[1, 2, 3, 4, 5, 6, 7, 8].map((l) => `<th>Lv.${l}</th>`).join('')}<th>合計</th><th>動かし方／効率</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
   </section>
