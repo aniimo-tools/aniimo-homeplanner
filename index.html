@@ -862,14 +862,17 @@ function runCalc() {
   if (hasTgt) s = prio ? lp.s : (S.setPrio(false), S.goalFixed(coinRun.y));
   const chain = prio && hasTgt ? S.chainOf() : R.map(() => false);
   // 施設ごとの表示
-  const byFac = {};
+  const byFac = {}, usedFac = {};
   R.forEach((r, j) => {
     const n = chain[j] ? x[j] : out.y[j];
     if (n <= 1e-3) return;
     const mix = model.modeCaps[r.fac] && model.modeCaps[r.fac].P > 0 && model.modeCaps[r.fac].A > 0;
     const tag = (mix && r.mode ? (r.mode === 'P' ? '（電力）' : '（アニモ）') : '') + (r.env ? '（' + ENV_NAME[r.env] + '）' : r.envOut ? '（範囲外）' : '');
-    const lab = chain[j] ? r.name + tag + ' ' + fmt(n, 2) + '台分' : r.name + tag + (MULTI.has(r.fac) || n > 1 ? ' ' + n : '');
+    const tot = model.caps[r.fac] ? model.caps[r.fac][0] : 0;
+    const lab = chain[j] ? r.name + tag + ' ' + fmt(n, 2) + '台分' : r.name + tag + (MULTI.has(r.fac) || tot > 1 ? ' ' + n + '台' : '');
     (byFac[r.fac] = byFac[r.fac] || []).push({ lab, t: chain[j], code: r.out });
+    if (!chain[j]) usedFac[r.fac] = (usedFac[r.fac] || 0) + n;
+    else usedFac[r.fac] = Infinity;
   });
   // 1日に使う種
   const seeds = {};
@@ -891,7 +894,7 @@ function runCalc() {
   const coinNeed = Math.max(0, model.targets.coin - (+state.lvup.coin || 0));
   result = {
     envFix: out.envFix || null, envCnt: model.env,
-    mode: prio && hasTgt ? 'prio' : 'coin', modeAsked: state.calcMode, hasTgt, coinH, pow, byFac, seeds, guide,
+    usedFac, mode: prio && hasTgt ? 'prio' : 'coin', modeAsked: state.calcMode, hasTgt, coinH, pow, byFac, seeds, guide,
     T: s > 0 ? 1 / s : (hasTgt ? Infinity : null), coinNeed, coinT: coinNeed > 0 ? coinNeed / Math.max(1, coinH) : 0,
     ms: Math.round(performance.now() - t0), at: new Date()
   };
@@ -1235,7 +1238,9 @@ function viewMain() {
     const r = result;
     const facCards = D.facs.filter(([c]) => (state.facs[c] && state.facs[c].lv.some((v) => +v > 0))).map(([c, n]) => {
       const total = state.facs[c].lv.reduce((a, b) => a + (+b || 0), 0);
-      const chips = (r.byFac[c] || []).map((x) => `<span class="chip${x.t ? ' t' : ''}">${ic(x.code)}${esc(x.lab)}</span>`).join('') || '<span class="chip o">使わない</span>';
+      const idle = r.usedFac && r.byFac[c] ? total - (r.usedFac[c] || 0) : 0;
+      const chips = ((r.byFac[c] || []).map((x) => `<span class="chip${x.t ? ' t' : ''}">${ic(x.code)}${esc(x.lab)}</span>`).join('') || '<span class="chip o">使わない</span>')
+        + (idle > 0 && isFinite(idle) ? `<span class="chip o">使わない ${idle}台</span>` : '');
       return `<div class="fac"><div class="fh"><b class="nm">${fic(c, 'map')}${esc(n)}</b><span class="muted">${total}台</span></div><div class="chips">${chips}</div></div>`;
     }).join('');
     const seedRows = Object.entries(r.seeds).sort((a, b) => b[1] * (ITEM[b[0]].buy || 0) - a[1] * (ITEM[a[0]].buy || 0)).map(([k, n]) => {
