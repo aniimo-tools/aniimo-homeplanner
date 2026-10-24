@@ -320,9 +320,18 @@ function applyHomeLv(state) {
   state.env = Object.assign(state.env || {}, { heat: '', cool: '', lamp: '' });
   for (const k in state.mods) if (+state.mods[k] > modMax(k, H)) state.mods[k] = modMax(k, H);
   if (+state.power.module > powerModMax(H)) state.power.module = powerModMax(H) || '';
+  // ホームLvを下げたとき：上限を超えるレベルは上限のレベルにまとめ、台数は上限まで減らす（低いレベルから）
   for (const c in state.facs) {
-    const mx = maxFacLv(+c, H);
-    state.facs[c].lv = state.facs[c].lv.map((v, i) => (i < mx ? v : 0));
+    const mx = maxFacLv(+c, H), lv = state.facs[c].lv.map((v) => +v || 0);
+    let over = 0;
+    for (let i = mx; i < lv.length; i++) { over += lv[i]; lv[i] = 0; }
+    if (mx > 0) lv[mx - 1] += over;
+    const mc = maxCount(+c, H);
+    if (mc != null) {
+      let extra = lv.reduce((a, v) => a + v, 0) - mc;
+      for (let i = 0; i < lv.length && extra > 0; i++) { const d = Math.min(lv[i], extra); lv[i] -= d; extra -= d; }
+    }
+    state.facs[c].lv = lv;
   }
 }
 
