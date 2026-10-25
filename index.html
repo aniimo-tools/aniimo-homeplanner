@@ -1047,7 +1047,6 @@ function viewLevelup() {
       <div class="scroll"><table class="grid">
         <thead><tr><th>順位</th><th>強化するもの</th>${P ? '<th>短くなる時間</th><th>強化後のレベルアップまで</th>' : ''}<th>増えるコイン/時</th><th>かかるコイン</th>${P ? '' : '<th>元が取れるまで</th>'}${state.power.on ? '<th>消費電力（後）</th>' : ''}<th>新しく作れるレシピ</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
-      <p class="muted small">1つだけ強化して、ほかはそのままの場合です。</p>
     </section>
     <p class="muted small">最終計算：${r.at.toLocaleString('ja-JP')}</p>`;
   }
@@ -1103,8 +1102,7 @@ function viewBook() {
         <select class="num" style="width:120px" data-bsort aria-label="並び順"><option value="profit" ${book.sort === 'profit' ? 'selected' : ''}>利益順</option><option value="code" ${book.sort === 'code' ? 'selected' : ''}>施設順</option></select>
       </div>
       <div class="scroll"><table class="grid"><thead><tr><th>レシピ</th><th>施設・必要Lv</th><th>材料</th><th>時間</th><th>売値</th><th>利益 コイン/時/台</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="6" class="muted">該当するレシピはありません</td></tr>'}</tbody></table></div>
-      <p class="muted small">時間はアニモ効率100%のときです。利益は、売値から材料の値段（種は買値、ほかは売値）を引いた額です。灰色は今のホームでは作れないレシピです。</p></section>`;
+      <tbody>${rows || '<tr><td colspan="6" class="muted">該当するレシピはありません</td></tr>'}</tbody></table></div></section>`;
   } else if (book.tab === 'item') {
     const q = book.q.trim();
     const rows = D.items.filter((i) => !q || i[1].includes(q)).map(([c, n, sell, buy]) => {
@@ -1115,8 +1113,7 @@ function viewBook() {
     }).join('');
     body = `<section class="card">
       <div class="row" style="justify-content:flex-start"><input class="num" style="width:220px;text-align:left;padding:0 8px" data-bq placeholder="名前で検索" value="${esc(book.q)}" aria-label="検索"></div>
-      <div class="scroll"><table class="grid"><thead><tr><th>品目</th><th>売値</th><th>買値</th><th>作れる施設</th><th>使い道</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <p class="muted small">品目名を押すと、加工チェーンを表示します。</p></section>`;
+      <div class="scroll"><table class="grid"><thead><tr><th>品目</th><th>売値</th><th>買値</th><th>作れる施設</th><th>使い道</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
   } else {
     const opts = D.items.filter((i) => D.recipes.some((r) => r[4] === i[0])).sort((a, b) => a[1].localeCompare(b[1], 'ja'))
       .map(([c, n]) => `<option value="${c}" ${+book.item === c ? 'selected' : ''}>${esc(n)}</option>`).join('');
@@ -1330,8 +1327,7 @@ function viewMain() {
         return `<tr><th scope="row"><span class="nm">${fic(c)}${esc(n)}</span></th><td>${kind}</td><td class="r b">${p}台</td><td class="r">${an}台</td><td class="r">${tot}台</td></tr>`;
       }).join('');
       return `<section class="card"><div class="fh"><h2>電力のおすすめ</h2><button class="btn" data-applypow>ホーム設定に反映する</button></div>
-        <div class="scroll"><table class="grid lv"><thead><tr><th>施設</th><th>動かし方</th><th>電力の台数</th><th>アニモの台数</th><th>全体</th></tr></thead><tbody>${rows}</tbody></table></div>
-        <p class="muted small">コイン/時が一番多くなる割り当てです。コインが変わらない場合は、アニモを空けられる方（材料待ちが多い施設など）を電力にします。全台が同時に動いても最大発電量を超えません。</p></section>`;
+        <div class="scroll"><table class="grid lv"><thead><tr><th>施設</th><th>動かし方</th><th>電力の台数</th><th>アニモの台数</th><th>全体</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
     })() : ''}
     <section><h2 class="h">施設ごとのレシピ</h2><div class="facs">${facCards}</div></section>
     ${guide}
