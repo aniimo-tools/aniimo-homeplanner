@@ -462,8 +462,13 @@ function buildModel(D, state, opts = {}) {
     const fs = state.facs[fac] || {};
     const eff = (+fs.eff || 100) / 100;
     // 電力を使える施設は「電力」と「アニモ」の2通りを作る（台数の上限は modeCaps）
-    let variants = POWER_FACS(fac) ? [['P', sec0, wPerLv(fac) * avgLv[fac]], ['A', sec0 / eff, 0]]
-      : [['', EFF_FACS(fac) ? sec0 / eff : sec0, 0]];
+    // 電力の台は、実際の台のLvで消費電力が決まる → 台のLvごとに分ける（ulv）
+    const aCnt = (state.facs[fac] && state.facs[fac].lv) || [];
+    let variants = [];
+    if (POWER_FACS(fac)) {
+      for (let L = lv; L <= 8; L++) if ((+aCnt[L - 1] || 0) > 0) variants.push(['P', sec0, wPerLv(fac) * L, undefined, L]);
+      variants.push(['A', sec0 / eff, 0]);
+    } else variants = [['', EFF_FACS(fac) ? sec0 / eff : sec0, 0]];
     // 環境：範囲内（ふつうの時間）と範囲外（1.5倍）の2通り。照明は範囲内だけ
     const env = ENV_FACS.has(fac) && items[out] ? ENV_OF[items[out].name] || null : null;
     if (env) {
@@ -473,7 +478,7 @@ function buildModel(D, state, opts = {}) {
       variants = vs;
     }
     const lossSec = fac === 10 || fac === 11 ? (+((state.loss || {})[fac]) || 0) * 60 : 0;
-    for (const [mode, sec1, w, envIn] of variants) {
+    for (const [mode, sec1, w, envIn, ulv] of variants) {
       const sec = sec1 + lossSec;
       if (mode && !(modeCaps[fac] && modeCaps[fac][mode] > 0)) continue;
       const rate = 3600 / sec;
@@ -483,12 +488,14 @@ function buildModel(D, state, opts = {}) {
       let p = 0; for (const k in coef) p += (items[k] ? items[k].sell : 0) * coef[k];
       const forced = FORCED_FACS.has(fac);
       if (forced) p += FORCE_W;
-      recs.push({ code, fac, lv, name, coef, p, w, rate, ins, out, mode, forced, env: env && envIn ? env : null, envOut: !!env && !envIn, envW: fac === 11 ? 1 : 0 });
+      recs.push({ code, fac, lv: ulv || lv, rlv: lv, ulv: ulv || 0, name, coef, p, w, rate, ins, out, mode, forced, env: env && envIn ? env : null, envOut: !!env && !envIn, envW: fac === 11 ? 1 : 0 });
     }
   }
   const t = lvupTargets(state), tgt = {};
   for (const c in t.mats) { const d = t.mats[c] - (+state.lvup.stock[c] || 0); if (d > 0) tgt[c] = d; }
-  return { items, recs, caps, modeCaps, powCap: capW, tgt, targets: t, env: envCnt };
+  const lvCnt = {};   // 施設ごと・Lvごとの台数（電力の台はちょうどそのLvの台を使う）
+  for (const [code] of D.facs) lvCnt[code] = ((state.facs[code] && state.facs[code].lv) || []).map((v) => +v || 0);
+  return { lvCnt, items, recs, caps, modeCaps, powCap: capW, tgt, targets: t, env: envCnt };
 }
 
 if (typeof module !== 'undefined') module.exports = { envState, envMax, ENV_NAME, ENV_OF, forcedRecipe, FORCED_FACS, FORCE_W, maxPoles, poleCount, poweredCount, applyHomeLv, maxFacLv, defaultState, buildModel, lvupTargets, LVUP_ITEMS, LVUP_REQ, POWER_FACS, EFF_FACS };
@@ -589,6 +596,11 @@ function makeSolver(model) {
         if (any) { A.push(r); b.push(caps[f][L - 1]); }
       }
     }
+    if (model.lvCnt) for (const f in model.lvCnt) for (let L = 1; L <= 8; L++) {   // 電力の台：ちょうどLv.Lの台の数まで
+      let any = false; const r = new Array(nv).fill(0);
+      xs.forEach((j, t) => { if (!bnd[t] && String(R[j].fac) === f && R[j].ulv === L) { r[t] = 1; any = true; } });
+      if (any) { A.push(r); b.push(model.lvCnt[f][L - 1] - (y ? xs.reduce((a, j, t) => a + (bnd[t] && String(R[j].fac) === f && R[j].ulv === L ? y[j] : 0), 0) : 0)); }
+    }
     for (const f in modeCaps) {          // 電力の台数・アニモの台数
       for (const md of ['P', 'A']) {
         let any = false; const r = new Array(nv).fill(0);
@@ -640,8 +652,16 @@ function makeSolver(model) {
 
   // 割り当てた台が全部同時に動いたときの消費電力
   function peakW(y) { let w = 0; for (let t = 0; t < nR; t++) if (y[t] > 0 && !(prio && chain[t])) w += R[t].w * y[t]; return w; }
+  // 表示用：時間で切り替える施設は、使う電力の台（Lvごとに切り上げ）が常にレシピ設定済みとして数える
+  function powerW(y, x) {
+    let w = peakW(y); const g = {};
+    for (let t = 0; t < nR; t++) if (prio && chain[t] && R[t].w > 0 && x[t] > 1e-6) { const k = R[t].fac + '|' + R[t].ulv; g[k] = g[k] || { n: 0, w: R[t].w }; g[k].n += x[t]; }
+    for (const k in g) w += Math.ceil(g[k].n - 1e-6) * g[k].w;
+    return w;
+  }
   function fitsAll(y) {   // 台数の上限を全部守っているか
     for (const f in caps) for (let L = 1; L <= 8; L++) { let t = 0; for (let j = 0; j < nR; j++) if (String(R[j].fac) === f && R[j].lv >= L) t += y[j]; if (t > caps[f][L - 1] + 1e-9) return false; }
+    if (model.lvCnt) for (const f in model.lvCnt) for (let L = 1; L <= 8; L++) { let t = 0; for (let j = 0; j < nR; j++) if (String(R[j].fac) === f && R[j].ulv === L) t += y[j]; if (t > model.lvCnt[f][L - 1] + 1e-9) return false; }
     for (const f in modeCaps) for (const md of ['P', 'A']) { let t = 0; for (let j = 0; j < nR; j++) if (String(R[j].fac) === f && R[j].mode === md) t += y[j]; if (t > modeCaps[f][md] + 1e-9) return false; }
     return true;
   }
@@ -652,6 +672,11 @@ function makeSolver(model) {
       let s = 0;
       for (let t = 0; t < nR; t++) if (R[t].fac === R[j].fac && R[t].lv >= L) s += y[t];
       if (s + 1 > cap[L - 1] + 1e-9) return false;
+    }
+    if (R[j].ulv && model.lvCnt) {
+      let s = 0;
+      for (let t = 0; t < nR; t++) if (R[t].fac === R[j].fac && R[t].ulv === R[j].ulv) s += y[t];
+      if (s + 1 > model.lvCnt[R[j].fac][R[j].ulv - 1] + 1e-9) return false;
     }
     const mc = modeCaps[R[j].fac];
     if (mc && R[j].mode) {
@@ -775,7 +800,7 @@ function makeSolver(model) {
   }
 
   return {
-    R, caps, fits, evalPlan, peakW, solveFull, goalFixed,
+    R, caps, fits, evalPlan, peakW, powerW, solveFull, goalFixed,
     setPrio(on) { prio = on; if (on) return setChain(); chain = new Array(nR).fill(false); return null; },
     chainOf: () => chain,
     needItems: () => setChain()
@@ -900,12 +925,18 @@ function runCalc() {
     if (n <= 1e-3) return;
     const mix = model.modeCaps[r.fac] && model.modeCaps[r.fac].P > 0 && model.modeCaps[r.fac].A > 0;
     const tag = (mix && r.mode ? (r.mode === 'P' ? '（電力）' : '（アニモ）') : '') + (r.env ? '（' + ENV_NAME[r.env] + '）' : r.envOut ? '（範囲外）' : '');
-    const tot = model.caps[r.fac] ? model.caps[r.fac][0] : 0;
-    const lab = chain[j] ? r.name + tag + ' ' + fmt(n, 2) + '台分' : r.name + tag + (MULTI.has(r.fac) || tot > 1 ? ' ' + n + '台' : '');
-    (byFac[r.fac] = byFac[r.fac] || []).push({ lab, t: chain[j], code: r.out });
+    // 同じレシピ（台のLvちがい）はまとめる
+    const list = byFac[r.fac] = byFac[r.fac] || [];
+    const key = r.name + tag + (chain[j] ? '#t' : '');
+    const ex = list.find((o) => o.key === key);
+    if (ex) ex.n += n; else list.push({ key, name: r.name + tag, n, t: chain[j], code: r.out, fac: r.fac });
     if (!chain[j]) usedFac[r.fac] = (usedFac[r.fac] || 0) + n;
     else usedFac[r.fac] = Infinity;
   });
+  for (const f in byFac) for (const o of byFac[f]) {
+    const tot = model.caps[f] ? model.caps[f][0] : 0;
+    o.lab = o.t ? o.name + ' ' + fmt(o.n, 2) + '台分' : o.name + (MULTI.has(+f) || tot > 1 ? ' ' + Math.round(o.n) + '台' : '');
+  }
   // 電力のおすすめ（施設ごとの電力の台数）
   const powRec = {};
   if (auto) {
@@ -920,7 +951,7 @@ function runCalc() {
   const seeds = {};
   R.forEach((r, j) => { if (x[j] > 1e-6) for (const [k, q] of r.ins) if (k < 100) seeds[k] = (seeds[k] || 0) + q * r.rate * x[j] * 24; });
   // 消費電力
-  let pow = S.peakW(out.y); R.forEach((r, j) => { if (chain[j]) pow += r.w * x[j]; });   // レシピを割り当てた電力の台の合計
+  const pow = S.powerW(out.y, x);   // レシピを割り当てた電力の台の合計（台の実際のLvで計算）
   // 切り替えの目安
   const guide = [];
   if (prio && hasTgt && s > 0) {
@@ -957,7 +988,7 @@ function evalState(st, goal, seed) {
   const lp = out.lp, R = S.R;
   const x = new Array(R.length).fill(0);
   if (lp) lp.xs.forEach((j, t) => { x[j] = lp.x[t]; });
-  const ch = S.chainOf(); let fb = 0, pow = S.peakW(out.y); R.forEach((r, j) => { if (r.forced) fb += FORCE_W * x[j]; if (prio && ch[j]) pow += r.w * x[j]; });
+  let fb = 0; const pow = S.powerW(out.y, x); R.forEach((r, j) => { if (r.forced) fb += FORCE_W * x[j]; });
   const coinH = lp ? lp.obj - (prio ? 1e11 * lp.s : 0) - fb : 0;
   const T = prio && lp && lp.s > 0 ? 1 / lp.s : (hasTgt ? Infinity : 0);
   const coinNeed = Math.max(0, model.targets.coin - (+st.lvup.coin || 0));
@@ -1306,6 +1337,7 @@ function viewMain() {
       <div class="stat"><div class="muted">素材の目標達成まで</div><div class="v">${goalTxt}</div><div class="muted">${goalSub}</div></div>
       <div class="stat"><div class="muted">コインがそろうまで</div><div class="v">${r.coinNeed > 0 ? hrs(r.coinT) : 'そろっている'}</div><div class="muted">${r.coinNeed > 0 ? 'あと ' + fmt(r.coinNeed) + ' コイン' : ''}${both && r.hasTgt ? '・両方そろうまで ' + hrs(both) : ''}</div></div>
     </section>
+    ${state.power.on && r.pow > maxPowerW(state) ? `<p class="warn">消費電力が最大発電量を超えています（給電率 ${Math.floor(maxPowerW(state) / r.pow * 100)}%）。</p>` : ''}
     ${r.modeAsked === 'prio' && !r.hasTgt ? '<p class="warn">LvUP素材の不足がないので、コイン最大で計算しました。</p>' : ''}
     ${envHtml}
     ${r.auto ? (() => {
