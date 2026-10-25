@@ -1167,11 +1167,11 @@ function render() {
   });
   const main = document.getElementById('view');
   // 描き直しても、横スクロールと縦の位置を保つ（同じ画面のときだけ）
-  const keepX = main.dataset.view === tab ? [...main.querySelectorAll('.scroll')].map((e) => e.scrollLeft) : [];
+  const keepX = main.dataset.view === tab ? [...main.querySelectorAll('.scroll')].map((e) => [e.scrollLeft, e.scrollTop]) : [];
   const keepY = main.dataset.view === tab ? window.scrollY : 0;
   main.dataset.view = tab;
   main.innerHTML = tab === 'home' ? viewHome() : tab === 'lvup' ? viewLvup() : tab === 'main' ? viewMain() : tab === 'levelup' ? viewLevelup() : tab === 'book' ? viewBook() : viewSoon();
-  main.querySelectorAll('.scroll').forEach((e, i) => { if (keepX[i]) e.scrollLeft = keepX[i]; });
+  main.querySelectorAll('.scroll').forEach((e, i) => { if (keepX[i]) { e.scrollLeft = keepX[i][0]; e.scrollTop = keepX[i][1]; } });
   if (keepY) window.scrollTo(0, keepY);
   const bn = document.getElementById('banner');
   bn.hidden = !pendingShare;
@@ -1402,7 +1402,7 @@ function onInput(e) {
   else if (d.coin !== undefined) state.lvup.coin = num;
   else if (d.note) state.notes[d.note] = el.checked;
   else if (d.bfac !== undefined) { book.fac = v; return; }
-  else if (d.bq !== undefined) { book.q = el.value; return; }
+  else if (d.bq !== undefined) return;
   else if (d.bnow !== undefined) { book.now = el.checked; return; }
   else if (d.bsort !== undefined) { book.sort = v; return; }
   else if (d.bchain !== undefined) { book.item = v ? +v : null; return; }
@@ -1475,10 +1475,17 @@ async function onClick(e) {
 function alertBox(msg) { toast(msg); }
 
 document.addEventListener('change', onChange);
-document.addEventListener('input', (e) => {   // 図鑑の検索は入力するたびに絞り込む
-  if (e.target.dataset.bq === undefined) return;
-  book.q = e.target.value; const pos = e.target.selectionStart;
-  render(); const el = document.querySelector('[data-bq]'); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+// 図鑑の検索は入力するたびに絞り込む（漢字変換の途中は待つ）
+function bookSearch(el) {
+  book.q = el.value; const pos = el.selectionStart;
+  render(); const n = document.querySelector('[data-bq]'); if (n) { n.focus(); n.setSelectionRange(pos, pos); }
+}
+document.addEventListener('input', (e) => {
+  if (e.target.dataset.bq === undefined || e.isComposing) return;
+  bookSearch(e.target);
+});
+document.addEventListener('compositionend', (e) => {
+  if (e.target.dataset && e.target.dataset.bq !== undefined) bookSearch(e.target);
 });
 document.addEventListener('click', onClick);
 document.getElementById('file').addEventListener('change', async (e) => {
