@@ -142,7 +142,7 @@ select.num.s,input.num.s{width:52px}
 <script>
 // ===== ゲームデータ＋入力 → 計算用モデル =====
 const POWER_FACS = (f) => f >= 20 || f === 12 || f === 13;   // 51・52（ポッド・ダンス）も含む   // 電力モードにできる施設
-const wPerLv = (f) => (f === 51 || f === 52 ? 30 : W_PER_LV);   // ポッド・ダンスは1台30W×Lv（aniimotools.dev）
+const wPerLv = (f) => (f === 12 || f === 51 || f === 52 ? 30 : W_PER_LV);   // 鉱山・アニポッドメーカー・ダンスパワーマシンは30W×Lv（ゲームで確認）、ほかは15W×Lv
 const EFF_FACS = (f) => f >= 14 && f <= 18;                  // アニモ専用（効率で時間が変わる）
 const LVUP_ITEMS = [1190, 2101, 2102, 2103, 2104, 1290, 2201, 2202, 2203, 2204];
 // 何レベルになるための条件か
@@ -236,7 +236,7 @@ function defaultState() {
   const facs = {};
   for (const c of [10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 31, 32, 33, 34, 35, 36, 41, 42, 51, 52]) {
     facs[c] = { lv: [0, 0, 0, 0, 0, 0, 0, 0] };
-    if (POWER_FACS(c)) facs[c].mode = '電力';
+    if (POWER_FACS(c)) facs[c].pmode = 'A';
     if (EFF_FACS(c)) facs[c].eff = 100;
   }
   return {
@@ -385,7 +385,7 @@ function envState(state) {
   const H = +state.homeLv, mx = envMax(H);
   const e = state.env || (state.env = {});
   const n = (k, i) => Math.min(e[k] === '' || e[k] == null ? mx[i] : +e[k], mx[i]);
-  return { heat: n('heat', 0), cool: n('cool', 1), lamp: n('lamp', 2), forest: e.forest > 0 ? +e.forest : 12, field: e.field > 0 ? +e.field : 32 };
+  return { heat: n('heat', 0), cool: n('cool', 1), lamp: n('lamp', 2), forest: 12, field: 32 };
 }
 
 function lvupTargets(state) {
@@ -409,7 +409,7 @@ function poweredCount(state, fac) {
   const f = state.facs[fac] || {};
   const total = (f.lv || []).reduce((s, v) => s + (+v || 0), 0);
   if (!POWER_FACS(fac) || !powerUsable(state)) return 0;
-  const pm = f.pmode || (f.mode === 'アニモ' ? 'A' : 'P');   // P＝電力、M＝複合、A＝アニモ
+  const pm = f.pmode || 'A';   // P＝電力、M＝複合、A＝アニモ（未設定はアニモ）
   if (pm === 'P') return total;
   if (pm === 'A') return 0;
   return Math.min(total, +f.pw || 0);
@@ -427,7 +427,8 @@ function forcedRecipe(D, state, fac) {
   return pick ? pick[0] : rs[rs.length - 1][0];
 }
 
-function buildModel(D, state) {
+// opts.autoPower：電力／アニモの台数を自由にして、最大発電量の中で一番よい割り当てを探す（おすすめ）
+function buildModel(D, state, opts = {}) {
   const items = {};
   for (const [code, name, sell, buy, nosale] of D.items) items[code] = { name, sell: nosale ? 0 : (sell || 0), buy: buy == null ? null : buy };
   const caps = {}, avgLv = {};
@@ -442,9 +443,23 @@ function buildModel(D, state) {
   const modeCaps = {};
   for (const [code] of D.facs) {
     if (!POWER_FACS(code)) continue;
-    const pw = poweredCount(state, code), total = caps[code][0];
+    const total = caps[code][0];
+    if (opts.autoPower && powerUsable(state)) { modeCaps[code] = { P: total, A: total }; continue; }
+    const pw = poweredCount(state, code);
     modeCaps[code] = { P: pw, A: total - pw };
   }
+  // ホーム設定どおりのとき：電力モードの台は、動いていなくても消費電力に入る（ゲームで確認）
+  // 合計が最大発電量を超えると、電力モードの施設が全部「給電率」の分だけ遅くなる
+  const auto = !!opts.autoPower && powerUsable(state);
+  let setW = 0;
+  if (!auto) for (const [code] of D.facs) {
+    if (!POWER_FACS(code)) continue;
+    const a = (state.facs[code] && state.facs[code].lv) || [];
+    let n = poweredCount(state, code);
+    for (let L = 8; L >= 1 && n > 0; L--) { const k = Math.min(n, +a[L - 1] || 0); setW += k * wPerLv(code) * L; n -= k; }   // 電力の台は高いLvから
+  }
+  const capW = maxPowerW(state);
+  const slow = !auto && setW > capW && capW > 0 ? capW / setW : 1;   // 給電率
   const envCnt = envState(state);
   const recs = [];
   for (const r of D.recipes) {
@@ -456,7 +471,7 @@ function buildModel(D, state) {
     const fs = state.facs[fac] || {};
     const eff = (+fs.eff || 100) / 100;
     // 電力を使える施設は「電力」と「アニモ」の2通りを作る（台数の上限は modeCaps）
-    let variants = POWER_FACS(fac) ? [['P', sec0, wPerLv(fac) * avgLv[fac]], ['A', sec0 / eff, 0]]
+    let variants = POWER_FACS(fac) ? [['P', sec0 / slow, auto ? wPerLv(fac) * avgLv[fac] : 0], ['A', sec0 / eff, 0]]
       : [['', EFF_FACS(fac) ? sec0 / eff : sec0, 0]];
     // 環境：範囲内（ふつうの時間）と範囲外（1.5倍）の2通り。照明は範囲内だけ
     const env = ENV_FACS.has(fac) && items[out] ? ENV_OF[items[out].name] || null : null;
@@ -482,7 +497,7 @@ function buildModel(D, state) {
   }
   const t = lvupTargets(state), tgt = {};
   for (const c in t.mats) { const d = t.mats[c] - (+state.lvup.stock[c] || 0); if (d > 0) tgt[c] = d; }
-  return { items, recs, caps, modeCaps, powCap: maxPowerW(state), tgt, targets: t, env: envCnt };
+  return { items, recs, caps, modeCaps, powCap: auto ? capW : 1e12, setW: auto ? null : setW, slow, tgt, targets: t, env: envCnt };
 }
 
 if (typeof module !== 'undefined') module.exports = { envState, envMax, ENV_NAME, ENV_OF, forcedRecipe, FORCED_FACS, FORCE_W, maxPoles, poleCount, poweredCount, applyHomeLv, maxFacLv, defaultState, buildModel, lvupTargets, LVUP_ITEMS, LVUP_REQ, POWER_FACS, EFF_FACS };
@@ -612,22 +627,36 @@ function makeSolver(model) {
       }
       if (envFix) for (const e in zCol) { const r = new Array(nv).fill(0); r[zCol[e]] = 1; A.push(r); b.push(envFix[e] || 0); }
     }
+    // 電力：台数が決まっているときは「割り当てた台が全部同時に動いた瞬間」でも最大発電量を超えないようにする
+    // （台数を決める前の小数の計算と、時間で切り替える施設は平均で見る）
     if (xs.some((j) => R[j].w > 0)) {
-      const r = new Array(nv).fill(0); xs.forEach((j, t) => { r[t] = R[j].w; }); A.push(r); b.push(Math.max(0, model.powCap));
+      const r = new Array(nv).fill(0); let fixedW = 0;
+      xs.forEach((j, t) => { if (bnd[t]) fixedW += R[j].w * y[j]; else r[t] = R[j].w; });
+      A.push(r); b.push(Math.max(0, model.powCap - fixedW));
     }
     const { x, obj } = simplexMax(c, A, b);
     return { xs, buys, x, obj, s: sCol >= 0 ? x[sCol] : 0 };
   }
 
   function evalPlan(y) {
+    if (peakW(y) > Math.max(0, model.powCap) + 1e-6) return { v: -1e18, lp: null };
     const lp = solveLP(y);
     if (!lp) return { v: -1e18, lp: null };
-    let sum = 0; for (let j = 0; j < nR; j++) sum += y[j];
-    return { v: lp.obj - 0.01 * sum, lp };
+    let sum = 0, aU = 0; for (let j = 0; j < nR; j++) { sum += y[j]; if (R[j].mode === 'A') aU += y[j]; }
+    // aWeight：コインが同じなら、アニモを使う台が少ない（電力に回せる）方を選ぶ
+    return { v: lp.obj - 0.01 * sum - (model.aWeight || 0) * aU, lp };
   }
 
+  // 割り当てた台が全部同時に動いたときの消費電力
+  function peakW(y) { let w = 0; for (let t = 0; t < nR; t++) if (y[t] > 0 && !(prio && chain[t])) w += R[t].w * y[t]; return w; }
+  function fitsAll(y) {   // 台数の上限を全部守っているか
+    for (const f in caps) for (let L = 1; L <= 8; L++) { let t = 0; for (let j = 0; j < nR; j++) if (String(R[j].fac) === f && R[j].lv >= L) t += y[j]; if (t > caps[f][L - 1] + 1e-9) return false; }
+    for (const f in modeCaps) for (const md of ['P', 'A']) { let t = 0; for (let j = 0; j < nR; j++) if (String(R[j].fac) === f && R[j].mode === md) t += y[j]; if (t > modeCaps[f][md] + 1e-9) return false; }
+    return true;
+  }
   function fits(y, j) {
     const cap = caps[R[j].fac]; if (!cap) return false;
+    if (R[j].w > 0 && !(prio && chain[j]) && peakW(y) + R[j].w > Math.max(0, model.powCap) + 1e-6) return false;
     for (let L = 1; L <= R[j].lv; L++) {
       let s = 0;
       for (let t = 0; t < nR; t++) if (R[t].fac === R[j].fac && R[t].lv >= L) s += y[t];
@@ -702,8 +731,9 @@ function makeSolver(model) {
     if (lp) lp.xs.forEach((j, t) => { xr[j] = lp.x[t]; });
     let y = round(xr);
     let best = evalPlan(y).v;
-    if (seed) {
-      const ys = R.map((r) => seed[keyOf(r)] || 0);
+    for (const sd of (Array.isArray(seed) ? seed : seed ? [seed] : [])) {
+      const ys = R.map((r) => sd[keyOf(r)] || 0);
+      if (!ys.every((v, j) => v === 0 || fitsAll(ys))) continue;
       const sv = evalPlan(ys).v;
       if (sv > best) { y = ys; best = sv; }
     }
@@ -754,7 +784,7 @@ function makeSolver(model) {
   }
 
   return {
-    R, caps, fits, evalPlan, solveFull, goalFixed,
+    R, caps, fits, evalPlan, peakW, solveFull, goalFixed,
     setPrio(on) { prio = on; if (on) return setChain(); chain = new Array(nR).fill(false); return null; },
     chainOf: () => chain,
     needItems: () => setChain()
@@ -845,15 +875,25 @@ function backupFile() {
 
 // ---- 計算 ----
 function runCalc() {
-  const model = buildModel(D, state);
+  const auto = state.powerAuto === 'auto' && powerUsable(state);
+  const model = buildModel(D, state, { autoPower: auto });
+  if (auto) model.aWeight = 1;   // コイン/時が1以内の差なら、アニモを空ける方を選ぶ
   const S = makeSolver(model);
   const prio = state.calcMode === 'prio';
   const hasTgt = Object.keys(model.tgt).length > 0;
   const t0 = performance.now();
   let coinRun, out;
+  // おすすめのときは、ホーム設定どおりの配置と全部アニモの配置も出発点にして、それより悪くならないようにする
+  const seedPlans = (p) => {
+    if (!auto) return null;
+    const res = [];
+    const allA = JSON.parse(JSON.stringify(state)); for (const c in allA.facs) if (POWER_FACS(+c)) allA.facs[c].pmode = 'A';
+    for (const st of [state, allA]) { const S2 = makeSolver(buildModel(D, st)); S2.setPrio(p); res.push(S2.solveFull().keys); }
+    return res;
+  };
   S.setPrio(false);
-  coinRun = S.solveFull();
-  if (prio && hasTgt) { S.setPrio(true); out = S.solveFull(); } else out = coinRun;
+  coinRun = S.solveFull(3, seedPlans(false));
+  if (prio && hasTgt) { S.setPrio(true); out = S.solveFull(3, seedPlans(true)); } else out = coinRun;
   const lp = out.lp, R = S.R;
   const x = new Array(R.length).fill(0);
   if (lp) lp.xs.forEach((j, t) => { x[j] = lp.x[t]; });
@@ -875,11 +915,21 @@ function runCalc() {
     if (!chain[j]) usedFac[r.fac] = (usedFac[r.fac] || 0) + n;
     else usedFac[r.fac] = Infinity;
   });
+  // 電力のおすすめ（施設ごとの電力の台数）
+  const powRec = {};
+  if (auto) {
+    R.forEach((r, j) => {
+      if (!POWER_FACS(r.fac) || !r.mode) return;
+      const n = chain[j] ? x[j] : out.y[j]; if (n <= 1e-3) return;
+      const o = powRec[r.fac] || (powRec[r.fac] = { P: 0, A: 0, frac: false });
+      o[r.mode] += n; if (chain[j]) o.frac = true;
+    });
+  }
   // 1日に使う種
   const seeds = {};
   R.forEach((r, j) => { if (x[j] > 1e-6) for (const [k, q] of r.ins) if (k < 100) seeds[k] = (seeds[k] || 0) + q * r.rate * x[j] * 24; });
   // 消費電力
-  let pow = 0; R.forEach((r, j) => { pow += r.w * x[j]; });
+  let pow = model.setW != null ? model.setW : S.peakW(out.y); if (model.setW == null) R.forEach((r, j) => { if (chain[j]) pow += r.w * x[j]; });   // 設定どおり：電力モードの全台／おすすめ：割り当てた全台
   // 切り替えの目安
   const guide = [];
   if (prio && hasTgt && s > 0) {
@@ -895,7 +945,7 @@ function runCalc() {
   const coinNeed = Math.max(0, model.targets.coin - (+state.lvup.coin || 0));
   result = {
     envFix: out.envFix || null, envCnt: model.env,
-    usedFac, mode: prio && hasTgt ? 'prio' : 'coin', modeAsked: state.calcMode, hasTgt, coinH, pow, byFac, seeds, guide,
+    slow: model.slow, auto, powRec, usedFac, mode: prio && hasTgt ? 'prio' : 'coin', modeAsked: state.calcMode, hasTgt, coinH, pow, byFac, seeds, guide,
     T: s > 0 ? 1 / s : (hasTgt ? Infinity : null), coinNeed, coinT: coinNeed > 0 ? coinNeed / Math.max(1, coinH) : 0,
     ms: Math.round(performance.now() - t0), at: new Date()
   };
@@ -916,7 +966,7 @@ function evalState(st, goal, seed) {
   const lp = out.lp, R = S.R;
   const x = new Array(R.length).fill(0);
   if (lp) lp.xs.forEach((j, t) => { x[j] = lp.x[t]; });
-  let fb = 0, pow = 0; R.forEach((r, j) => { if (r.forced) fb += FORCE_W * x[j]; pow += r.w * x[j]; });
+  const ch = S.chainOf(); let fb = 0, pow = model.setW != null ? model.setW : S.peakW(out.y); R.forEach((r, j) => { if (r.forced) fb += FORCE_W * x[j]; if (prio && ch[j]) pow += r.w * x[j]; });
   const coinH = lp ? lp.obj - (prio ? 1e11 * lp.s : 0) - fb : 0;
   const T = prio && lp && lp.s > 0 ? 1 / lp.s : (hasTgt ? Infinity : 0);
   const coinNeed = Math.max(0, model.targets.coin - (+st.lvup.coin || 0));
@@ -997,7 +1047,7 @@ function viewLevelup() {
       <div class="scroll"><table class="grid">
         <thead><tr><th>順位</th><th>強化するもの</th>${P ? '<th>短くなる時間</th><th>強化後のレベルアップまで</th>' : ''}<th>増えるコイン/時</th><th>かかるコイン</th>${P ? '' : '<th>元が取れるまで</th>'}${state.power.on ? '<th>消費電力（後）</th>' : ''}<th>新しく作れるレシピ</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
-      <p class="muted small">1つだけ強化して、ほかはそのままの場合です。かかるコインはaniimotools.devの値です（モジュールは不明なので「—」）。</p>
+      <p class="muted small">1つだけ強化して、ほかはそのままの場合です。</p>
     </section>
     <p class="muted small">最終計算：${r.at.toLocaleString('ja-JP')}</p>`;
   }
@@ -1135,7 +1185,7 @@ function viewHome() {
       const total = f.lv.reduce((s, x) => s + (+x || 0), 0);
       const canP = powerUsable(state);
       const pw = poweredCount(state, c);
-      const pm = canP ? (f.pmode || (f.mode === 'アニモ' ? 'A' : 'P')) : 'A';
+      const pm = canP ? (f.pmode || 'A') : 'A';
       const btn = (v, lab) => `<button data-pmode="${c}" data-v="${v}" aria-pressed="${pm === v}" ${canP ? '' : 'disabled'}>${lab}</button>`;
       const effIn = `<label>効率<input class="num s" inputmode="numeric" aria-label="${esc(n)}のアニモ効率" data-eff="${c}" value="${f.eff ?? 100}">%</label>`;
       extra = `<span class="mix">${make}<span class="seg sm" role="group" aria-label="${esc(n)}の動かし方">${btn('P', '電力')}${btn('M', '複合')}${btn('A', 'アニモ')}</span>
@@ -1190,8 +1240,6 @@ function viewHome() {
     <div class="row"><span class="nm">${fic('heat')}熱エネルギー炉</span>${sel('data-env="heat" aria-label="熱エネルギー炉の台数"', EV.heat, envMax(hl)[0], 0, 'num w')}</div>
     <div class="row"><span class="nm">${fic('cool')}クーラー</span>${sel('data-env="cool" aria-label="クーラーの台数"', EV.cool, envMax(hl)[1], 0, 'num w')}</div>
     <div class="row"><span class="nm">${fic('lamp')}日光ランプ</span>${sel('data-env="lamp" aria-label="日光ランプの台数"', EV.lamp, envMax(hl)[2], 0, 'num w')}</div>
-    <label class="row">1台で届く森の数<input class="num w" inputmode="numeric" data-env="forest" value="${EV.forest}"></label>
-    <label class="row">1台で届く畑の数（畑だけのとき）<input class="num w" inputmode="numeric" data-env="field" value="${EV.field}"></label>
   </section>
   <section class="card">
     <h2>レシピノート</h2>
@@ -1270,8 +1318,21 @@ function viewMain() {
       <div class="stat"><div class="muted">素材の目標達成まで</div><div class="v">${goalTxt}</div><div class="muted">${goalSub}</div></div>
       <div class="stat"><div class="muted">コインがそろうまで</div><div class="v">${r.coinNeed > 0 ? hrs(r.coinT) : 'そろっている'}</div><div class="muted">${r.coinNeed > 0 ? 'あと ' + fmt(r.coinNeed) + ' コイン' : ''}${both && r.hasTgt ? '・両方そろうまで ' + hrs(both) : ''}</div></div>
     </section>
+    ${r.slow < 1 ? `<p class="warn">電力モードの施設の合計が最大発電量を超えています（給電率 ${Math.floor(r.slow * 100)}%）。電力モードの施設が全部この割合で遅くなる前提で計算しました。</p>` : ''}
     ${r.modeAsked === 'prio' && !r.hasTgt ? '<p class="warn">LvUP素材の不足がないので、コイン最大で計算しました。</p>' : ''}
     ${envHtml}
+    ${r.auto ? (() => {
+      const rows = D.facs.filter(([c]) => POWER_FACS(c) && state.facs[c] && state.facs[c].lv.some((v) => +v > 0)).map(([c, n]) => {
+        const tot = state.facs[c].lv.reduce((s, v) => s + (+v || 0), 0), o = r.powRec[c] || { P: 0, A: 0, frac: false };
+        const p = o.frac ? fmt(o.P, 1) : Math.round(o.P);
+        const kind = o.P <= 1e-3 && o.A <= 1e-3 ? '使わない' : o.P <= 1e-3 ? 'アニモ' : (!o.frac && Math.round(o.P) >= tot) ? '電力' : '複合';
+        const an = Math.round(o.A);
+        return `<tr><th scope="row"><span class="nm">${fic(c)}${esc(n)}</span></th><td>${kind}</td><td class="r b">${p}台</td><td class="r">${an}台</td><td class="r">${tot}台</td></tr>`;
+      }).join('');
+      return `<section class="card"><div class="fh"><h2>電力のおすすめ</h2><button class="btn" data-applypow>ホーム設定に反映する</button></div>
+        <div class="scroll"><table class="grid lv"><thead><tr><th>施設</th><th>動かし方</th><th>電力の台数</th><th>アニモの台数</th><th>全体</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="muted small">コイン/時が一番多くなる割り当てです。コインが変わらない場合は、アニモを空けられる方（材料待ちが多い施設など）を電力にします。全台が同時に動いても最大発電量を超えません。</p></section>`;
+    })() : ''}
     <section><h2 class="h">施設ごとのレシピ</h2><div class="facs">${facCards}</div></section>
     ${guide}
     <section class="card"><div class="fh"><h2>1日に使う種</h2><span class="muted">この配置で24時間動かした場合</span></div>
@@ -1287,6 +1348,10 @@ function viewMain() {
       <span class="seg" role="group" aria-label="計算モード">
         <button data-calcmode="coin" aria-pressed="${m === 'coin'}">コイン最大</button>
         <button data-calcmode="prio" aria-pressed="${m === 'prio'}">LvUP素材優先</button></span></div>
+    ${powerUsable(state) ? `<div><div class="muted small">電力の割り当て</div>
+      <span class="seg" role="group" aria-label="電力の割り当て">
+        <button data-powauto="set" aria-pressed="${state.powerAuto !== 'auto'}">ホーム設定どおり</button>
+        <button data-powauto="auto" aria-pressed="${state.powerAuto === 'auto'}">おすすめを計算</button></span></div>` : ''}
     <button class="primary" data-run>計算する</button>
   </section>
   ${body}`;
@@ -1358,6 +1423,17 @@ async function onClick(e) {
     result = null; toast('施設を最大にしました。台数は、確かめられている数か今の数の多い方です');
   }
   else if (d.calcmode) { state.calcMode = d.calcmode; result = null; }
+  else if (d.powauto) { state.powerAuto = d.powauto; result = null; }
+  else if (d.applypow !== undefined) {
+    if (!result || !result.auto) return;
+    for (const [c] of D.facs) {
+      if (!POWER_FACS(c) || !state.facs[c]) continue;
+      const f = state.facs[c], tot = f.lv.reduce((s, v) => s + (+v || 0), 0), o = result.powRec[c] || { P: 0 };
+      const n = Math.min(tot, Math.ceil(o.P - 1e-6));
+      f.pmode = n <= 0 ? 'A' : n >= tot ? 'P' : 'M'; f.pw = n;
+    }
+    toast('電力のおすすめをホーム設定に反映しました');
+  }
   else if (d.fgrp !== undefined) { facGroup = +d.fgrp; }
   else if (d.lvgoal) { state.lvGoal = d.lvgoal; }
   else if (d.btab) { book.tab = d.btab; }
